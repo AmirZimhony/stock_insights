@@ -1,0 +1,20 @@
+# Core dependencies
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# MongoDB
+pymongo>=4.5.0
+dnspython>=2.4.0
+
+# Data validation
+pydantic>=2.0.0
+
+# Airflow (optional - for DAG deployment)
+apache-airflow>=2.7.0
+apache-airflow-providers-mongo>=3.2.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+

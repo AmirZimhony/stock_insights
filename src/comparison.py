@@ -1,0 +1,234 @@
+"""
+Comparison engine - Calculate deltas from previous day
+"""
+import logging
+from datetime import datetime, timedelta
+from typing import Dict
+import pandas as pd
+from src.utils import get_mongo_client
+
+
+def add_comparisons(
+    df: pd.DataFrame,
+    db_name: str,
+    target_collection: str,
+    source_collection: str,
+    target_date: str
+) -> pd.DataFrame:
+    """
+    Add comparison data from previous day
+    
+    Args:
+        df: DataFrame with current day data
+        db_name: Database name
+        target_collection: Target collection (daily_stock_summaries)
+        source_collection: Source collection (stocks_merged)
+        target_date: Current date as YYYY-MM-DD string
+        
+    Returns:
+        DataFrame with comparison fields added
+    """
+    if df.empty:
+        logging.warning("Empty DataFrame provided to add_comparisons")
+        return df
+    
+    logging.info("Adding comparison data from previous day")
+    
+    # Get previous date
+    target_dt = datetime.strptime(target_date, '%Y-%m-%d')
+    prev_date = target_dt - timedelta(days=1)
+    
+    # Try primary strategy: query from daily_stock_summaries
+    prev_data = _query_summaries(db_name, target_collection, prev_date)
+    
+    # If not found, try fallback: query from raw stocks_merged
+    if not prev_data:
+        logging.info("No data in summaries collection, falling back to raw data")
+        prev_data = _query_raw_data(db_name, source_collection, prev_date)
+    
+    # Add comparison fields to dataframe
+    df = _calculate_deltas(df, prev_data, prev_date)
+    
+    logging.info("Comparison data added successfully")
+    
+    return df
+
+
+def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) -> Dict:
+    """
+    Query previous day data from daily_stock_summaries
+    
+    Returns:
+        Dictionary mapping (ticker, exchange) to previous day data
+    """
+    try:
+        client = get_mongo_client()
+        db = client[db_name]
+        collection = db[collection_name]
+        
+        # Query for previous date (summaries collection uses datetime objects)
+        next_date = prev_date + timedelta(days=1)
+        query = {
+            'date': {
+                '$gte': prev_date,
+                '$lt': next_date
+            }
+        }
+        
+        cursor = collection.find(query)
+        data = list(cursor)
+        client.close()
+        
+        if not data:
+            return {}
+        
+        logging.info(f"Found {len(data)} records from summaries for {prev_date.date()}")
+        
+        # Create lookup dictionary
+        lookup = {}
+        for record in data:
+            key = (record.get('ticker'), record.get('exchange'))
+            lookup[key] = {
+                'prev_date': record.get('date'),
+                'pct_change': record.get('pct_change'),
+                'vol_ratio': record.get('vol_ratio'),
+                'consistency_score': record.get('consistency_score'),
+                'prev_exists': True
+            }
+        
+        return lookup
+        
+    except Exception as e:
+        logging.warning(f"Error querying summaries: {e}")
+        return {}
+
+
+def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> Dict:
+    """
+    Query previous day data from raw stocks_merged collection
+    
+    Returns:
+        Dictionary mapping (ticker, exchange) to previous day data
+    """
+    try:
+        client = get_mongo_client()
+        db = client[db_name]
+        collection = db[collection_name]
+        
+        # Query for previous date (convert to DD-MM-YYYY string format)
+        prev_date_str = prev_date.strftime('%d-%m-%Y')
+        next_date_str = (prev_date + timedelta(days=1)).strftime('%d-%m-%Y')
+        query = {
+            'date': {
+                '$gte': prev_date_str,
+                '$lt': next_date_str
+            }
+        }
+        
+        cursor = collection.find(query)
+        data = list(cursor)
+        client.close()
+        
+        if not data:
+            return {}
+        
+        logging.info(f"Found {len(data)} records from raw data for {prev_date_str}")
+        
+        # Create lookup dictionary
+        lookup = {}
+        for record in data:
+            ticker = record.get('ticker')
+            exchange = record.get('exchange')
+            
+            # Calculate pct_change from raw data (change is percentage string)
+            last_price = record.get('last_price', record.get('price', 0))
+            change_str = record.get('change', '0%')
+            pct_change = float(change_str.rstrip('%')) if isinstance(change_str, str) else 0.0
+            
+            key = (ticker, exchange)
+            lookup[key] = {
+                'prev_date': record.get('date'),
+                'pct_change': pct_change,
+                'vol_ratio': None,  # Not available in raw data
+                'consistency_score': None,  # Not available in raw data
+                'prev_exists': True
+            }
+        
+        return lookup
+        
+    except Exception as e:
+        logging.warning(f"Error querying raw data: {e}")
+        return {}
+
+
+def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: datetime) -> pd.DataFrame:
+    """
+    Calculate deltas between current and previous day
+    
+    Args:
+        df: Current day DataFrame
+        prev_data: Dictionary of previous day data
+        prev_date: Previous date
+        
+    Returns:
+        DataFrame with comparison fields
+    """
+    # Get only the latest date records
+    latest_date = df['date'].max()
+    
+    def get_comparison(row):
+        # Only calculate for latest date
+        if row['date'] != latest_date:
+            return {
+                'prev_date': None,
+                'delta_pct_change': None,
+                'delta_vol_ratio': None,
+                'delta_consistency': None,
+                'prev_exists': False
+            }
+        
+        key = (row['ticker'], row['exchange'])
+        prev = prev_data.get(key)
+        
+        if not prev:
+            return {
+                'prev_date': None,
+                'delta_pct_change': None,
+                'delta_vol_ratio': None,
+                'delta_consistency': None,
+                'prev_exists': False
+            }
+        
+        # Calculate deltas
+        delta_pct_change = None
+        if prev.get('pct_change') is not None:
+            delta_pct_change = row['pct_change'] - prev['pct_change']
+        
+        delta_vol_ratio = None
+        if prev.get('vol_ratio') is not None and row.get('vol_ratio') is not None:
+            delta_vol_ratio = row['vol_ratio'] - prev['vol_ratio']
+        
+        delta_consistency = None
+        if prev.get('consistency_score') is not None and row.get('consistency_score') is not None:
+            delta_consistency = row['consistency_score'] - prev['consistency_score']
+        
+        return {
+            'prev_date': prev_date,
+            'delta_pct_change': delta_pct_change,
+            'delta_vol_ratio': delta_vol_ratio,
+            'delta_consistency': delta_consistency,
+            'prev_exists': prev['prev_exists']
+        }
+    
+    # Apply comparison calculation
+    comparison_data = df.apply(get_comparison, axis=1, result_type='expand')
+    
+    # Add comparison columns to dataframe
+    df['comparison_prev_date'] = comparison_data['prev_date']
+    df['comparison_delta_pct_change'] = comparison_data['delta_pct_change']
+    df['comparison_delta_vol_ratio'] = comparison_data['delta_vol_ratio']
+    df['comparison_delta_consistency'] = comparison_data['delta_consistency']
+    df['comparison_prev_exists'] = comparison_data['prev_exists']
+    
+    return df
+

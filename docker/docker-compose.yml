@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  stock-insights:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      platform: linux/arm64
+      args:
+        - BUILD_TIMESTAMP=${BUILD_TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}
+        - BUILD_ID=${BUILD_ID:-$(openssl rand -hex 4)}
+        - GIT_HASH=${GIT_HASH:-$(git rev-parse --short HEAD 2>/dev/null || echo "nogit")}
+    image: ${DOCKER_IMAGE_TAG:-stock-insights:latest}
+    platform: linux/arm64
+    container_name: stock-insights
+    environment:
+      - db_url=${db_url}
+    volumes:
+      - ../config.json:/app/config.json:ro
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pymongo; print('Health check passed')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
