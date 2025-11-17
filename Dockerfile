@@ -49,5 +49,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import pymongo; print('Health check passed')" || exit 1
 
 # Default command - can be overridden with docker run arguments
-ENTRYPOINT ["python", "main.py"]
+CMD ["sh", "-c", "python main.py"]
 

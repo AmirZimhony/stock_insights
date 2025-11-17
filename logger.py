@@ -17,7 +17,7 @@ def setup_logging(date=None, env=None):
     - Gracefully falls back to stdout-only if file logging fails
     
     Args:
-        date: Date string (YYYY-MM-DD) to include in log filename
+        date: Date string (DD-MM-YYYY) to include in log filename
         env: Environment name (dev/prod) to include in log filename
     """
     log_level = getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper())
@@ -25,8 +25,8 @@ def setup_logging(date=None, env=None):
     # Primary handler: stdout for Airflow/Docker
     handlers = [logging.StreamHandler(sys.stdout)]
 
-    # Optional file logging
-    log_dir = os.getenv('LOG_DIR', 'logs')
+    # Optional file logging - only if LOG_DIR is explicitly set (no default)
+    log_dir = os.getenv('LOG_DIR')  # Remove default 'logs'
     logfile = None
     if log_dir:
         try:
@@ -49,7 +49,6 @@ def setup_logging(date=None, env=None):
         level=log_level,
         format='%(asctime)s - [%(filename)s:%(lineno)d] - %(levelname)s - %(message)s',
         handlers=handlers,
-        force=True  # Override any existing configuration
     )
     
     if logfile:
