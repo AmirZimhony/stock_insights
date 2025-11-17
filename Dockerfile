@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY config.py .
 COPY config.json .
+COPY logger.py .
 COPY src/ ./src/
 
 # Set environment variables
