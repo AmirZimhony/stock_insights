@@ -4,11 +4,6 @@
     "source_collection": "stocks_merged_test",
     "target_collection": "daily_stock_summaries_dev"
   },
-  "prod": {
-    "db_name": "stock_data",
-    "source_collection": "stocks_merged",
-    "target_collection": "daily_stock_summaries"
-  },
   "thresholds": {
     "lookback_days": 17,
     "volume_spike_threshold": 2.0,

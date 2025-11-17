@@ -22,6 +22,17 @@ python main.py --date DD-MM-YYYY [--env dev|prod] [--db-name NAME] [--source-col
 
 Configuration is in `config.json` (thresholds, dev/prod database names).
 
+**Note for Airflow/Docker deployments:** This repository only contains `dev` configurations in `config.json`. For other environments (e.g., `staging`, `prod`) or when running in Airflow, you **must** provide database and collection names via command-line arguments (`--db-name`, `--source-collection`, `--target-collection`). Command-line arguments override values from `config.json`, so the pipeline will work correctly as long as these arguments are provided, even if the environment name doesn't exist in the config file.
+
+**Example with all command-line arguments (using dev config values):**
+python main.py \
+  --date 10-11-2025 \
+  --env staging \
+  --db-name stock_test1 \
+  --source-collection stocks_merged_test \
+  --target-collection daily_stock_summaries_dev
+```
+
 ## Input/Output
 
 **Input:** `stocks_merged` collection with fields: ticker, name, exchange, date, last_price, change (%), volume, sector, industry, country, num_of_rising_days, accumulated_change, market_cap, pe_ratio

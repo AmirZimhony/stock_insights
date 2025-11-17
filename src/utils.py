@@ -31,9 +31,9 @@ def parse_args():
     )
     parser.add_argument(
         '--env',
-        default='prod',
-        choices=['dev', 'prod'],
-        help='Environment: dev or prod (default: prod)'
+        default='dev',
+        choices=['dev', 'prod', 'staging'],
+        help='Environment: dev, staging or prod (default: dev)'
     )
     parser.add_argument(
         '--db-name',
