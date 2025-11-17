@@ -22,6 +22,10 @@ ENV/
 # Environment and config files with credentials
 .env
 
+# Logs
+logs/
+*.log
+
 # OS
 .DS_Store
 Thumbs.db

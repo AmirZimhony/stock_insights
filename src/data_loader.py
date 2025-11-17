@@ -29,25 +29,46 @@ def load_stock_data(
     db = client[db_name]
     collection = db[source_collection]
     
-    # Parse target date and convert to DD-MM-YYYY for MongoDB query
+    # Parse target date
     target_dt = datetime.strptime(target_date, '%Y-%m-%d')
     start_date = target_dt - timedelta(days=lookback_days)
     
-    # Convert to DD-MM-YYYY string format for MongoDB query
+    # Convert to DD-MM-YYYY string format for display
     target_date_str = target_dt.strftime('%d-%m-%Y')
     start_date_str = start_date.strftime('%d-%m-%Y')
     
     logging.info(f"Loading data from {start_date_str} to {target_date_str}")
     
-    # Query MongoDB using string dates in DD-MM-YYYY format
-    query = {
-        'date': {
-            '$gte': start_date_str,
-            '$lte': target_date_str
+    # Use MongoDB aggregation pipeline to parse and filter dates server-side
+    pipeline = [
+        {
+            '$addFields': {
+                'parsed_date': {
+                    '$dateFromString': {
+                        'dateString': '$date',
+                        'format': '%d-%m-%Y',
+                        'onError': None,  # Set to None for invalid dates
+                        'onNull': None
+                    }
+                }
+            }
+        },
+        {
+            '$match': {
+                'parsed_date': {
+                    '$gte': start_date,
+                    '$lte': target_dt
+                }
+            }
+        },
+        {
+            '$project': {
+                'parsed_date': 0  # Remove the temporary parsed_date field
+            }
         }
-    }
+    ]
     
-    cursor = collection.find(query)
+    cursor = collection.aggregate(pipeline)
     data = list(cursor)
     client.close()
     
@@ -55,7 +76,7 @@ def load_stock_data(
         logging.warning(f"No data found for date range {start_date.date()} to {target_dt.date()}")
         return pd.DataFrame()
     
-    logging.info(f"Loaded {len(data)} records from MongoDB")
+    logging.info(f"Loaded {len(data)} records from MongoDB (filtered server-side)")
     
     # Convert to DataFrame
     df = pd.DataFrame(data)
@@ -93,12 +114,18 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
         df['date'] = pd.to_datetime(df['date'], format='%d-%m-%Y', errors='coerce')
     
     # Parse change from percentage string (e.g., "-0.22%") and store as pct_change
+    # Handle cases where change is "-" or other invalid values
     if 'change' in df.columns:
-        df['pct_change'] = df['change'].astype(str).str.rstrip('%').astype(float)
+        # Strip % and handle cases where value is just "-"
+        df['pct_change'] = df['change'].astype(str).str.rstrip('%')
+        # Replace only when the entire value is "-" (not negative numbers)
+        df['pct_change'] = df['pct_change'].apply(lambda x: '' if x == '-' else x)
+        df['pct_change'] = pd.to_numeric(df['pct_change'], errors='coerce')
     
     # Parse volume from comma-separated string (e.g., "98,935")
     if 'volume' in df.columns:
-        df['volume'] = df['volume'].astype(str).str.replace(',', '').astype(float)
+        df['volume'] = df['volume'].astype(str).str.replace(',', '')
+        df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
     
     # Map input field names to internal names
     if 'name' in df.columns and 'company' not in df.columns:

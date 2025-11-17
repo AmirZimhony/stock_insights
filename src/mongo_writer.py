@@ -2,6 +2,7 @@
 MongoDB writer - Upsert daily summaries with validation
 """
 import logging
+import time
 from datetime import datetime
 from typing import Dict, List
 import pandas as pd
@@ -27,33 +28,48 @@ def upsert_summaries(
     Returns:
         Dictionary with operation results
     """
+    # TODO: Remove most timing logs before pushing - these are for performance debugging only
+    start_time = time.time()
+    
     if df.empty:
         logging.warning("Empty DataFrame provided to upsert_summaries")
         return {'upserted': 0, 'errors': 0}
     
     # Filter to only latest date
+    stage_start = time.time()
     latest_date = df['date'].max()
     df_latest = df[df['date'] == latest_date].copy()
+    logging.info(f"Filtered to latest date: {time.time() - stage_start:.2f}s - {len(df_latest)} records")
     
     logging.info(f"Upserting {len(df_latest)} summaries to {db_name}.{target_collection}")
     
     # Connect to MongoDB
+    stage_start = time.time()
     client = get_mongo_client()
     db = client[db_name]
     collection = db[target_collection]
+    logging.info(f"MongoDB connection: {time.time() - stage_start:.2f}s")
     
     # Create indexes if they don't exist
+    stage_start = time.time()
     _create_indexes(collection)
+    logging.info(f"Index creation/check: {time.time() - stage_start:.2f}s")
     
     # Convert DataFrame rows to documents
+    stage_start = time.time()
     documents = _prepare_documents(df_latest)
+    logging.info(f"Document preparation: {time.time() - stage_start:.2f}s - {len(documents)} documents")
     
-    # Upsert documents
+    # Insert documents
+    stage_start = time.time()
     result = _upsert_documents(collection, documents)
+    logging.info(f"Document insert: {time.time() - stage_start:.2f}s")
     
     client.close()
     
+    total_time = time.time() - start_time
     logging.info(f"Upserted {result['upserted']} documents, {result['errors']} errors")
+    logging.info(f"Total upsert_summaries time: {total_time:.2f}s ({total_time/60:.2f} minutes)")
     
     return result
 
@@ -105,13 +121,29 @@ def _prepare_documents(df: pd.DataFrame) -> List[Dict]:
     Returns:
         List of validated documents
     """
+    # TODO: Remove timing logs before pushing - for performance debugging only
+    start_time = time.time()
     documents = []
+    total_rows = len(df)
+    progress_interval = max(1000, total_rows // 10)  # Log every 1000 or 10% of total
     
-    for _, row in df.iterrows():
+    for idx, (_, row) in enumerate(df.iterrows(), 1):
+        if idx % progress_interval == 0 or idx == total_rows:
+            elapsed = time.time() - start_time
+            rate = idx / elapsed if elapsed > 0 else 0
+            logging.info(f"Preparing documents: {idx}/{total_rows} ({idx*100//total_rows}%) - {elapsed:.2f}s - {rate:.0f} docs/s")
         try:
             # Create comparison data
+            # Convert prev_date from DD-MM-YYYY string to datetime if it's a string
+            prev_date_value = row.get('comparison_prev_date')
+            if prev_date_value and isinstance(prev_date_value, str):
+                try:
+                    prev_date_value = datetime.strptime(prev_date_value, '%d-%m-%Y')
+                except ValueError:
+                    prev_date_value = None  # Invalid date string, set to None
+            
             comparison = ComparisonData(
-                prev_date=row.get('comparison_prev_date'),
+                prev_date=prev_date_value,
                 delta_pct_change=row.get('comparison_delta_pct_change'),
                 delta_vol_ratio=row.get('comparison_delta_vol_ratio'),
                 delta_consistency=row.get('comparison_delta_consistency'),
@@ -174,47 +206,55 @@ def _prepare_documents(df: pd.DataFrame) -> List[Dict]:
             logging.error(f"Error preparing document for {row.get('ticker')}: {e}")
             continue
     
+    total_time = time.time() - start_time
+    logging.info(f"Document preparation complete: {len(documents)} documents in {total_time:.2f}s ({total_time/60:.2f} minutes) - {len(documents)/total_time:.0f} docs/s")
+    
     return documents
 
 
 def _upsert_documents(collection, documents: List[Dict]) -> Dict:
     """
-    Upsert documents to MongoDB
+    Insert documents to MongoDB using bulk insert with batching
     
     Args:
         collection: MongoDB collection
-        documents: List of documents to upsert
+        documents: List of documents to insert
         
     Returns:
-        Dictionary with upsert results
+        Dictionary with operation results
     """
-    upserted_count = 0
+    # TODO: Remove timing logs before pushing - for performance debugging only
+    start_time = time.time()
+    total_docs = len(documents)
+    batch_size = 1500  # Use 1.5k batch size (safe between 1k-2k)
+    inserted_count = 0
     error_count = 0
     
-    for doc in documents:
+    # Process documents in batches
+    for i in range(0, total_docs, batch_size):
+        batch = documents[i:i + batch_size]
+        batch_num = (i // batch_size) + 1
+        total_batches = (total_docs + batch_size - 1) // batch_size
+        
         try:
-            # Upsert by ticker, exchange, and date
-            filter_query = {
-                'ticker': doc['ticker'],
-                'exchange': doc['exchange'],
-                'date': doc['date']
-            }
-            
-            result = collection.update_one(
-                filter_query,
-                {'$set': doc},
-                upsert=True
-            )
-            
-            if result.upserted_id or result.modified_count > 0:
-                upserted_count += 1
-                
+            # Use insert_many for bulk insert (much faster than individual inserts)
+            result = collection.insert_many(batch, ordered=False)
+            batch_inserted = len(result.inserted_ids)
+            inserted_count += batch_inserted
+            logging.info(f"Batch {batch_num}/{total_batches}: Inserted {batch_inserted}/{len(batch)} documents")
         except Exception as e:
-            logging.error(f"Error upserting document for {doc.get('ticker')}: {e}")
-            error_count += 1
+            # If bulk insert fails, it might be due to duplicates
+            # Log the error but continue with next batch
+            logging.error(f"Error in bulk insert batch {batch_num}/{total_batches}: {e}")
+            error_count += len(batch)
+    
+    total_time = time.time() - start_time
+    avg_time_per_doc = total_time / total_docs if total_docs > 0 else 0
+    logging.info(f"Document insert complete: {inserted_count} inserted, {error_count} errors in {total_time:.2f}s ({total_time/60:.2f} minutes)")
+    logging.info(f"Average time per document: {avg_time_per_doc*1000:.1f}ms - Rate: {total_docs/total_time:.0f} docs/s")
     
     return {
-        'upserted': upserted_count,
+        'upserted': inserted_count,  # Keep same return format for compatibility
         'errors': error_count,
         'total': len(documents)
     }

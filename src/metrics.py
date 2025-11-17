@@ -177,6 +177,18 @@ def _calculate_standout_metrics(df: pd.DataFrame, z_threshold: float, min_points
     
     latest_date, latest_df = _get_latest_date_df(df)
     
+    # Log sector group sizes for debugging
+    sector_counts = latest_df.groupby('exchange_sector').size()
+    logging.info(f"Standout metrics: Analyzing {len(sector_counts)} exchange_sector groups on {latest_date}")
+    logging.info(f"Sector group sizes - min: {sector_counts.min()}, max: {sector_counts.max()}, mean: {sector_counts.mean():.1f}")
+    
+    # Count sectors that will use bootstrap
+    sectors_with_bootstrap = sector_counts[sector_counts < min_points]
+    if len(sectors_with_bootstrap) > 0:
+        logging.info(f"Found {len(sectors_with_bootstrap)} sectors with <{min_points} stocks (will use bootstrap): {dict(sectors_with_bootstrap)}")
+    else:
+        logging.info(f"All {len(sector_counts)} sectors have >= {min_points} stocks (no bootstrap needed)")
+    
     def calc_standout_z(group):
         # Use sector if enough data points, otherwise use exchange
         if len(group) >= min_points:
@@ -199,6 +211,7 @@ def _calculate_standout_metrics(df: pd.DataFrame, z_threshold: float, min_points
             else:
                 group['standout_z'] = 0.0
             group['bootstrap_source'] = 'exchange_median'
+            logging.info(f"Bootstrap used for exchange_sector '{group['exchange_sector'].iloc[0]}' ({len(group)} stocks < {min_points})")
         
         return group
     
@@ -207,6 +220,15 @@ def _calculate_standout_metrics(df: pd.DataFrame, z_threshold: float, min_points
     # Map back to full dataframe
     standout_map = latest_df.set_index('ticker')['standout_z'].to_dict()
     bootstrap_map = latest_df.set_index('ticker')['bootstrap_source'].to_dict()
+    
+    # Log bootstrap usage statistics
+    bootstrap_usage = {k: v for k, v in bootstrap_map.items() if v is not None}
+    if bootstrap_usage:
+        bootstrap_tickers = list(bootstrap_usage.keys())
+        bootstrap_sectors = set(latest_df[latest_df['ticker'].isin(bootstrap_tickers)]['exchange_sector'])
+        logging.info(f"Bootstrap applied to {len(bootstrap_usage)} tickers from {len(bootstrap_sectors)} sectors")
+    else:
+        logging.info(f"No bootstrap needed: all {len(bootstrap_map)} tickers have sufficient sector data")
     
     df['standout_z'] = df.apply(
         lambda row: standout_map.get(row['ticker'], 0.0) if row['date'] == latest_date else 0.0,

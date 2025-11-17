@@ -3,18 +3,25 @@ Main entrypoint for Daily Stock Insights Pipeline
 """
 import sys
 import logging
-from config import setup_logging
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+from logger import setup_logging
 from src.utils import parse_args
 from src.pipeline import run_pipeline
 
 
 def main():
     """Main CLI entrypoint"""
-    # Setup logging first
-    setup_logging()
-    
-    # Parse command-line arguments
+    # Parse command-line arguments first to get date and env for log filename
     args, db_name, source_collection, target_collection, thresholds = parse_args()
+    
+    # Setup logging with date and environment for filename
+    setup_logging(date=args.date, env=args.env)
     
     logging.info(f"Daily Stock Insights Pipeline")
     logging.info(f"Date: {args.date}")

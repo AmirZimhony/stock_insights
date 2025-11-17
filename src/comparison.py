@@ -66,30 +66,30 @@ def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) ->
         db = client[db_name]
         collection = db[collection_name]
         
-        # Query for previous date (summaries collection uses datetime objects)
-        next_date = prev_date + timedelta(days=1)
-        query = {
-            'date': {
-                '$gte': prev_date,
-                '$lt': next_date
-            }
-        }
+        # Query for previous date (summaries collection uses DD-MM-YYYY string format)
+        # Use exact match since we're querying for a single day
+        prev_date_str = prev_date.strftime('%d-%m-%Y')
+        query = {'date': prev_date_str}
         
         cursor = collection.find(query)
         data = list(cursor)
         client.close()
         
         if not data:
+            logging.info(f"No records found in summaries for {prev_date_str}")
             return {}
         
-        logging.info(f"Found {len(data)} records from summaries for {prev_date.date()}")
+        logging.info(f"Found {len(data)} records from summaries for {prev_date_str}")
         
         # Create lookup dictionary
         lookup = {}
         for record in data:
             key = (record.get('ticker'), record.get('exchange'))
+            # Keep date as DD-MM-YYYY string (as stored in MongoDB)
+            prev_date_from_record = record.get('date')
+            
             lookup[key] = {
-                'prev_date': record.get('date'),
+                'prev_date': prev_date_from_record,  # Keep as string
                 'pct_change': record.get('pct_change'),
                 'vol_ratio': record.get('vol_ratio'),
                 'consistency_score': record.get('consistency_score'),
@@ -141,9 +141,23 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> 
             exchange = record.get('exchange')
             
             # Calculate pct_change from raw data (change is percentage string)
+            # Handle cases where change is "-" or other invalid values
             last_price = record.get('last_price', record.get('price', 0))
             change_str = record.get('change', '0%')
-            pct_change = float(change_str.rstrip('%')) if isinstance(change_str, str) else 0.0
+            
+            # Strip % and handle cases where value is just "-"
+            if isinstance(change_str, str):
+                change_str_clean = change_str.rstrip('%')
+                # Replace only when the entire value is "-" (not negative numbers)
+                if change_str_clean == '-':
+                    pct_change = None
+                else:
+                    try:
+                        pct_change = float(change_str_clean)
+                    except ValueError:
+                        pct_change = None
+            else:
+                pct_change = 0.0
             
             key = (ticker, exchange)
             lookup[key] = {
@@ -212,8 +226,15 @@ def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: datetime) ->
         if prev.get('consistency_score') is not None and row.get('consistency_score') is not None:
             delta_consistency = row['consistency_score'] - prev['consistency_score']
         
+        # Use date from record (string) if available, otherwise convert prev_date to string
+        prev_date_value = prev.get('prev_date')
+        if prev_date_value is None:
+            prev_date_value = prev_date.strftime('%d-%m-%Y')
+        elif isinstance(prev_date_value, datetime):
+            prev_date_value = prev_date_value.strftime('%d-%m-%Y')
+        
         return {
-            'prev_date': prev_date,
+            'prev_date': prev_date_value,  # Keep as DD-MM-YYYY string
             'delta_pct_change': delta_pct_change,
             'delta_vol_ratio': delta_vol_ratio,
             'delta_consistency': delta_consistency,

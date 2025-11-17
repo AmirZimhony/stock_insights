@@ -2,32 +2,11 @@
 import json
 import logging
 import os
-import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-
-def setup_logging():
-    """Setup logging configuration"""
-    log_level = getattr(logging, 'INFO')
-    handlers = [logging.StreamHandler(sys.stdout)]
-    
-    log_dir = os.getenv('LOG_DIR')
-    if log_dir:
-        try:
-            os.makedirs(log_dir, exist_ok=True)
-            logfile = os.path.join(
-                log_dir, 
-                f'stock_insights_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
-            )
-            handlers.append(logging.FileHandler(logfile))
-        except Exception:
-            pass
-    
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=handlers
-    )
+# Pipeline metadata
+PIPELINE_VERSION = "1.0.0"
+PIPELINE_NAME = "daily_stock_insights"
 
 
 def load_config(env='prod'):
