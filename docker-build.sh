@@ -52,8 +52,8 @@ if [ $? -eq 0 ]; then
     
     echo ""
     echo "You can now run it with:"
-    echo "  docker run --env-file .env ${UNIQUE_TAG} --date 2025-11-10 --env prod"
-    echo "  docker run --env-file .env ${LATEST_TAG} --date 2025-11-10 --env dev"
+    echo "  docker run --env-file .env ${UNIQUE_TAG} --date 10-11-2025 --env prod"
+    echo "  docker run --env-file .env ${LATEST_TAG} --date 10-11-2025 --env dev"
     echo ""
     echo "Or use it in your Airflow DAG as '${UNIQUE_TAG}'"
 else

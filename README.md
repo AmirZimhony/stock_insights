@@ -11,13 +11,13 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Run
-python main.py --date 2025-11-10 --env dev
+python main.py --date 10-11-2025 --env dev
 ```
 
 ## Usage
 
 ```bash
-python main.py --date YYYY-MM-DD [--env dev|prod] [--db-name NAME] [--source-collection NAME] [--target-collection NAME]
+python main.py --date DD-MM-YYYY [--env dev|prod] [--db-name NAME] [--source-collection NAME] [--target-collection NAME]
 ```
 
 Configuration is in `config.json` (thresholds, dev/prod database names).
@@ -135,7 +135,7 @@ Nested object with pipeline information:
 
 ```bash
 ./docker-build.sh  # Builds and pushes to Docker Hub
-docker run --env-file .env amiroz/projects:stock_insights_latest --date 2025-11-10 --env prod
+docker run --env-file .env amiroz/projects:stock_insights_latest --date 10-11-2025 --env prod
 ```
 
 Local testing with MongoDB:
@@ -144,6 +144,9 @@ cd docker && docker-compose up -d
 ```
 
 ## Future Improvements
+
+**Improved prev_date comparison mechanism**
+- Consider keeping in metadata table the last date each market was active, for each market. These prev dates will be passed to this job. The current mechanism (today -1, if doesn't exist then use raw data for computing prev date data) isn't very reliable.  
 
 **Comparison Logic Enhancement:**
 - Consider changing the standout metrics and bootstrap logic to use `industry` instead of `sector` for grouping. Currently, the pipeline groups by `exchange_sector` (21 sectors), but using `exchange_industry` (273 industries) would provide more granular comparisons. Note that with more granular groups, each industry group will have fewer stocks than sector groups, which may increase bootstrap fallback usage when groups have <5 stocks.

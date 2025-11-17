@@ -19,7 +19,7 @@ def load_stock_data(
     Args:
         db_name: Database name
         source_collection: Source collection name (e.g., stocks_merged)
-        target_date: Target date as YYYY-MM-DD string
+        target_date: Target date as DD-MM-YYYY string
         lookback_days: Number of days to look back (default 10)
         
     Returns:
@@ -30,7 +30,7 @@ def load_stock_data(
     collection = db[source_collection]
     
     # Parse target date
-    target_dt = datetime.strptime(target_date, '%Y-%m-%d')
+    target_dt = datetime.strptime(target_date, '%d-%m-%Y')
     start_date = target_dt - timedelta(days=lookback_days)
     
     # Convert to DD-MM-YYYY string format for display

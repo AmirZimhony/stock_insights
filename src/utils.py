@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument(
         '--date',
         required=True,
-        help='Target date in YYYY-MM-DD format'
+        help='Target date in DD-MM-YYYY format'
     )
     parser.add_argument(
         '--env',

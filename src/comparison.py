@@ -23,7 +23,7 @@ def add_comparisons(
         db_name: Database name
         target_collection: Target collection (daily_stock_summaries)
         source_collection: Source collection (stocks_merged)
-        target_date: Current date as YYYY-MM-DD string
+        target_date: Current date as DD-MM-YYYY string
         
     Returns:
         DataFrame with comparison fields added
@@ -35,7 +35,7 @@ def add_comparisons(
     logging.info("Adding comparison data from previous day")
     
     # Get previous date
-    target_dt = datetime.strptime(target_date, '%Y-%m-%d')
+    target_dt = datetime.strptime(target_date, '%d-%m-%Y')
     prev_date = target_dt - timedelta(days=1)
     
     # Try primary strategy: query from daily_stock_summaries
