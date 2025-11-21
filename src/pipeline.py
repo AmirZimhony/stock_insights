@@ -14,17 +14,19 @@ def run_pipeline(
     db_name: str,
     source_collection: str,
     target_collection: str,
-    thresholds: Dict
+    thresholds: Dict,
+    prev_date: str
 ) -> Dict:
     """
     Run the complete daily stock insights pipeline
     
     Args:
-        date: Target date as YYYY-MM-DD string
+        date: Target date as DD-MM-YYYY string
         db_name: Database name
         source_collection: Source collection name
         target_collection: Target collection name
         thresholds: Dictionary of threshold values
+        prev_date: Previous date for comparisons as DD-MM-YYYY string (required)
         
     Returns:
         Dictionary with pipeline results
@@ -59,12 +61,15 @@ def run_pipeline(
         
         # Step 3: Add comparisons
         logging.info("Step 3/4: Adding comparisons to previous day...")
+        from datetime import datetime
+        target_dt = datetime.strptime(date, '%d-%m-%Y')
         df = add_comparisons(
             df=df,
             db_name=db_name,
             target_collection=target_collection,
             source_collection=source_collection,
-            target_date=date
+            target_dt=target_dt,
+            prev_date=prev_date
         )
         
         # Step 4: Upsert to MongoDB
@@ -72,7 +77,8 @@ def run_pipeline(
         result = upsert_summaries(
             df=df,
             db_name=db_name,
-            target_collection=target_collection
+            target_collection=target_collection,
+            target_date=date
         )
         
         # Prepare final result

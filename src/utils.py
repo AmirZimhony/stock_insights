@@ -30,6 +30,11 @@ def parse_args():
         help='Target date in DD-MM-YYYY format'
     )
     parser.add_argument(
+        '--prev-date',
+        required=True,
+        help='Previous date for comparisons in DD-MM-YYYY format'
+    )
+    parser.add_argument(
         '--env',
         default='dev',
         choices=['dev', 'prod', 'staging'],

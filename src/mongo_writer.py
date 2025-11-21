@@ -15,7 +15,8 @@ from src.utils import get_mongo_client
 def upsert_summaries(
     df: pd.DataFrame,
     db_name: str,
-    target_collection: str
+    target_collection: str,
+    target_date: str = None
 ) -> Dict:
     """
     Upsert daily summaries to MongoDB
@@ -24,6 +25,7 @@ def upsert_summaries(
         df: DataFrame with calculated summaries
         db_name: Database name
         target_collection: Target collection name
+        target_date: Target date as DD-MM-YYYY string (required for correct date filtering)
         
     Returns:
         Dictionary with operation results
@@ -35,10 +37,22 @@ def upsert_summaries(
         logging.warning("Empty DataFrame provided to upsert_summaries")
         return {'upserted': 0, 'errors': 0}
     
-    # Filter to only latest date
+    # Filter to target date (use provided target_date instead of max())
     stage_start = time.time()
-    latest_date = df['date'].max()
-    df_latest = df[df['date'] == latest_date].copy()
+    if target_date:
+        target_dt = datetime.strptime(target_date, '%d-%m-%Y')
+        # Convert to datetime for comparison with DataFrame dates
+        df_latest = df[df['date'] == target_dt].copy()
+        if df_latest.empty:
+            logging.warning(f"No data found for target date {target_date}, using max date instead")
+            latest_date = df['date'].max()
+            df_latest = df[df['date'] == latest_date].copy()
+        else:
+            latest_date = target_dt
+    else:
+        # Fallback to max date if target_date not provided
+        latest_date = df['date'].max()
+        df_latest = df[df['date'] == latest_date].copy()
     logging.info(f"Filtered to latest date: {time.time() - stage_start:.2f}s - {len(df_latest)} records")
     
     logging.info(f"Upserting {len(df_latest)} summaries to {db_name}.{target_collection}")
