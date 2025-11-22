@@ -13,7 +13,8 @@ def add_comparisons(
     db_name: str,
     target_collection: str,
     source_collection: str,
-    target_date: str
+    target_dt: datetime,
+    prev_date: str
 ) -> pd.DataFrame:
     """
     Add comparison data from previous day
@@ -23,7 +24,8 @@ def add_comparisons(
         db_name: Database name
         target_collection: Target collection (daily_stock_summaries)
         source_collection: Source collection (stocks_merged)
-        target_date: Current date as DD-MM-YYYY string
+        target_dt: Target date as datetime object
+        prev_date: Previous date as DD-MM-YYYY string (required)
         
     Returns:
         DataFrame with comparison fields added
@@ -33,10 +35,7 @@ def add_comparisons(
         return df
     
     logging.info("Adding comparison data from previous day")
-    
-    # Get previous date
-    target_dt = datetime.strptime(target_date, '%d-%m-%Y')
-    prev_date = target_dt - timedelta(days=1)
+    logging.info(f"Using previous date: {prev_date}")
     
     # Try primary strategy: query from daily_stock_summaries
     prev_data = _query_summaries(db_name, target_collection, prev_date)
@@ -47,16 +46,19 @@ def add_comparisons(
         prev_data = _query_raw_data(db_name, source_collection, prev_date)
     
     # Add comparison fields to dataframe
-    df = _calculate_deltas(df, prev_data, prev_date)
+    df = _calculate_deltas(df, prev_data, prev_date, target_dt)
     
     logging.info("Comparison data added successfully")
     
     return df
 
 
-def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) -> Dict:
+def _query_summaries(db_name: str, collection_name: str, prev_date: str) -> Dict:
     """
     Query previous day data from daily_stock_summaries
+    
+    Args:
+        prev_date: Previous date as DD-MM-YYYY string
     
     Returns:
         Dictionary mapping (ticker, exchange) to previous day data
@@ -68,18 +70,17 @@ def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) ->
         
         # Query for previous date (summaries collection uses DD-MM-YYYY string format)
         # Use exact match since we're querying for a single day
-        prev_date_str = prev_date.strftime('%d-%m-%Y')
-        query = {'date': prev_date_str}
+        query = {'date': prev_date}
         
         cursor = collection.find(query)
         data = list(cursor)
         client.close()
         
         if not data:
-            logging.info(f"No records found in summaries for {prev_date_str}")
+            logging.info(f"No records found in summaries for {prev_date}")
             return {}
         
-        logging.info(f"Found {len(data)} records from summaries for {prev_date_str}")
+        logging.info(f"Found {len(data)} records from summaries for {prev_date}")
         
         # Create lookup dictionary
         lookup = {}
@@ -103,9 +104,12 @@ def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) ->
         return {}
 
 
-def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> Dict:
+def _query_raw_data(db_name: str, collection_name: str, prev_date: str) -> Dict:
     """
     Query previous day data from raw stocks_merged collection
+    
+    Args:
+        prev_date: Previous date as DD-MM-YYYY string
     
     Returns:
         Dictionary mapping (ticker, exchange) to previous day data
@@ -115,12 +119,14 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> 
         db = client[db_name]
         collection = db[collection_name]
         
-        # Query for previous date (convert to DD-MM-YYYY string format)
-        prev_date_str = prev_date.strftime('%d-%m-%Y')
-        next_date_str = (prev_date + timedelta(days=1)).strftime('%d-%m-%Y')
+        # Calculate next date string for range query
+        # Parse prev_date, add 1 day, format back to string
+        prev_date_dt = datetime.strptime(prev_date, '%d-%m-%Y')
+        next_date_str = (prev_date_dt + timedelta(days=1)).strftime('%d-%m-%Y')
+        
         query = {
             'date': {
-                '$gte': prev_date_str,
+                '$gte': prev_date,
                 '$lt': next_date_str
             }
         }
@@ -132,7 +138,7 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> 
         if not data:
             return {}
         
-        logging.info(f"Found {len(data)} records from raw data for {prev_date_str}")
+        logging.info(f"Found {len(data)} records from raw data for {prev_date}")
         
         # Create lookup dictionary
         lookup = {}
@@ -175,20 +181,21 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> 
         return {}
 
 
-def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: datetime) -> pd.DataFrame:
+def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: str, target_date: datetime) -> pd.DataFrame:
     """
     Calculate deltas between current and previous day
     
     Args:
         df: Current day DataFrame
         prev_data: Dictionary of previous day data
-        prev_date: Previous date
+        prev_date: Previous date as DD-MM-YYYY string
+        target_date: Target date as datetime (use this instead of max() for DataFrame comparison)
         
     Returns:
         DataFrame with comparison fields
     """
-    # Get only the latest date records
-    latest_date = df['date'].max()
+    # Use target_date instead of max()
+    latest_date = target_date
     
     def get_comparison(row):
         # Only calculate for latest date
@@ -226,10 +233,10 @@ def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: datetime) ->
         if prev.get('consistency_score') is not None and row.get('consistency_score') is not None:
             delta_consistency = row['consistency_score'] - prev['consistency_score']
         
-        # Use date from record (string) if available, otherwise convert prev_date to string
+        # Use date from record (string) if available, otherwise use prev_date string
         prev_date_value = prev.get('prev_date')
         if prev_date_value is None:
-            prev_date_value = prev_date.strftime('%d-%m-%Y')
+            prev_date_value = prev_date
         elif isinstance(prev_date_value, datetime):
             prev_date_value = prev_date_value.strftime('%d-%m-%Y')
         

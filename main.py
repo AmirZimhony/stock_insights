@@ -25,6 +25,8 @@ def main():
     
     logging.info(f"Daily Stock Insights Pipeline")
     logging.info(f"Date: {args.date}")
+    logging.info(f"Previous date: {args.prev_date}")
+    logging.info(f"Target date: {args.date}")
     logging.info(f"Environment: {args.env}")
     logging.info(f"Database: {db_name}")
     logging.info(f"Source: {source_collection}")
@@ -33,6 +35,7 @@ def main():
     # Run pipeline
     result = run_pipeline(
         date=args.date,
+        prev_date=args.prev_date,
         db_name=db_name,
         source_collection=source_collection,
         target_collection=target_collection,
