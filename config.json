@@ -2,7 +2,7 @@
   "dev": {
     "db_name": "stock_test1",
     "source_collection": "stocks_merged_test",
-    "target_collection": "daily_stock_summaries_dev_37"
+    "target_collection": "daily_stock_summaries_dev"
   },
   "thresholds": {
     "lookback_days": 17,
