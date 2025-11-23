@@ -54,9 +54,12 @@ def add_comparisons(
     return df
 
 
-def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) -> Dict:
+def _query_summaries(db_name: str, collection_name: str, prev_date: str) -> Dict:
     """
     Query previous day data from daily_stock_summaries
+    
+    Args:
+        prev_date: Previous date as DD-MM-YYYY string
     
     Returns:
         Dictionary mapping (ticker, exchange) to previous day data
@@ -82,10 +85,10 @@ def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) ->
         client.close()
         
         if not data:
-            logging.info(f"No records found in summaries for {prev_date_str}")
+            logging.info(f"No records found in summaries for {prev_date}")
             return {}
         
-        logging.info(f"Found {len(data)} records from summaries for {prev_date_str}")
+        logging.info(f"Found {len(data)} records from summaries for {prev_date}")
         
         # Create lookup dictionary
         lookup = {}
@@ -107,9 +110,12 @@ def _query_summaries(db_name: str, collection_name: str, prev_date: datetime) ->
         return {}
 
 
-def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> Dict:
+def _query_raw_data(db_name: str, collection_name: str, prev_date: str) -> Dict:
     """
     Query previous day data from raw stocks_merged collection
+    
+    Args:
+        prev_date: Previous date as DD-MM-YYYY string
     
     Returns:
         Dictionary mapping (ticker, exchange) to previous day data
@@ -137,7 +143,7 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: datetime) -> 
         if not data:
             return {}
         
-        logging.info(f"Found {len(data)} records from raw data for {prev_date_str}")
+        logging.info(f"Found {len(data)} records from raw data for {prev_date}")
         
         # Create lookup dictionary
         lookup = {}
