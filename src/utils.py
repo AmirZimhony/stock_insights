@@ -4,6 +4,7 @@ Utility functions shared across modules
 import os
 import argparse
 import logging
+from datetime import datetime, timedelta
 from pymongo import MongoClient
 from config import load_config
 
@@ -19,7 +20,8 @@ def parse_args():
     Parse command-line arguments
     
     Returns:
-        tuple: (args, db_name, source_collection, target_collection, thresholds)
+        tuple: (date, prev_date, env, db_name, source_collection, target_collection, thresholds)
+        where date and prev_date are datetime objects
     """
     parser = argparse.ArgumentParser(
         description='Daily Stock Insights Pipeline - Generate daily stock summaries with exchange context'
@@ -55,6 +57,14 @@ def parse_args():
     
     args = parser.parse_args()
     
+    # Parse date strings to datetime objects
+    try:
+        date = datetime.strptime(args.date, '%d-%m-%Y')
+        prev_date = datetime.strptime(args.prev_date, '%d-%m-%Y')
+    except ValueError as e:
+        logging.error(f"Invalid date format: {e}")
+        raise ValueError(f"Dates must be in DD-MM-YYYY format. Error: {e}")
+    
     # Load configuration
     config = load_config(args.env)
     
@@ -64,5 +74,5 @@ def parse_args():
     target_collection = args.target_collection or config['target_collection']
     thresholds = config.get('thresholds', {})
     
-    return args, db_name, source_collection, target_collection, thresholds
+    return date, prev_date, args.env, db_name, source_collection, target_collection, thresholds
 

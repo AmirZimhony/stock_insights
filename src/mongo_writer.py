@@ -3,7 +3,7 @@ MongoDB writer - Upsert daily summaries with validation
 """
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
 import pandas as pd
 from pymongo import ASCENDING, DESCENDING
@@ -16,7 +16,7 @@ def upsert_summaries(
     df: pd.DataFrame,
     db_name: str,
     target_collection: str,
-    target_date: str = None
+    target_date: datetime = None
 ) -> Dict:
     """
     Upsert daily summaries to MongoDB
@@ -25,7 +25,7 @@ def upsert_summaries(
         df: DataFrame with calculated summaries
         db_name: Database name
         target_collection: Target collection name
-        target_date: Target date as DD-MM-YYYY string (required for correct date filtering)
+        target_date: Target date as datetime object (used to filter the correct date)
         
     Returns:
         Dictionary with operation results
@@ -37,22 +37,23 @@ def upsert_summaries(
         logging.warning("Empty DataFrame provided to upsert_summaries")
         return {'upserted': 0, 'errors': 0}
     
-    # Filter to target date (use provided target_date instead of max())
+    # Filter to target date
     stage_start = time.time()
-    if target_date:
-        target_dt = datetime.strptime(target_date, '%d-%m-%Y')
-        # Convert to datetime for comparison with DataFrame dates
-        df_latest = df[df['date'] == target_dt].copy()
-        if df_latest.empty:
-            logging.warning(f"No data found for target date {target_date}, using max date instead")
-            latest_date = df['date'].max()
-            df_latest = df[df['date'] == latest_date].copy()
-        else:
-            latest_date = target_dt
-    else:
-        # Fallback to max date if target_date not provided
-        latest_date = df['date'].max()
-        df_latest = df[df['date'] == latest_date].copy()
+    if not target_date:
+        raise ValueError("target_date is required for upsert_summaries")
+    
+    # Use date range to handle any time component in stored datetime
+    end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+    df_latest = df[(df['date'] >= target_date) & (df['date'] <= end_of_day)].copy()
+    
+    if df_latest.empty:
+        target_date_str = target_date.strftime('%d-%m-%Y')
+        available_dates = df['date'].dt.strftime('%d-%m-%Y').unique()
+        raise ValueError(
+            f"No data found for target date {target_date_str}. "
+            f"Available dates: {sorted(available_dates)}"
+        )
+    
     logging.info(f"Filtered to latest date: {time.time() - stage_start:.2f}s - {len(df_latest)} records")
     
     logging.info(f"Upserting {len(df_latest)} summaries to {db_name}.{target_collection}")
@@ -148,13 +149,8 @@ def _prepare_documents(df: pd.DataFrame) -> List[Dict]:
             logging.info(f"Preparing documents: {idx}/{total_rows} ({idx*100//total_rows}%) - {elapsed:.2f}s - {rate:.0f} docs/s")
         try:
             # Create comparison data
-            # Convert prev_date from DD-MM-YYYY string to datetime if it's a string
+            # prev_date is already a datetime object from comparison module
             prev_date_value = row.get('comparison_prev_date')
-            if prev_date_value and isinstance(prev_date_value, str):
-                try:
-                    prev_date_value = datetime.strptime(prev_date_value, '%d-%m-%Y')
-                except ValueError:
-                    prev_date_value = None  # Invalid date string, set to None
             
             comparison = ComparisonData(
                 prev_date=prev_date_value,

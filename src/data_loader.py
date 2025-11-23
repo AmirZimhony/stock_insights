@@ -10,7 +10,7 @@ from src.utils import get_mongo_client
 def load_stock_data(
     db_name: str,
     source_collection: str,
-    target_date: str,
+    target_date: datetime,
     lookback_days: int = 17
 ) -> pd.DataFrame:
     """
@@ -19,7 +19,7 @@ def load_stock_data(
     Args:
         db_name: Database name
         source_collection: Source collection name (e.g., stocks_merged)
-        target_date: Target date as DD-MM-YYYY string
+        target_date: Target date as datetime object
         lookback_days: Number of days to look back (default 10)
         
     Returns:
@@ -29,41 +29,26 @@ def load_stock_data(
     db = client[db_name]
     collection = db[source_collection]
     
-    # Parse target date
-    target_dt = datetime.strptime(target_date, '%d-%m-%Y')
-    start_date = target_dt - timedelta(days=lookback_days)
+    # Calculate start date
+    start_date = target_date - timedelta(days=lookback_days)
+    
+    # Calculate end of target day to include all times on that day
+    end_of_target_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
     
     # Convert to DD-MM-YYYY string format for display
-    target_date_str = target_dt.strftime('%d-%m-%Y')
+    target_date_str = target_date.strftime('%d-%m-%Y')
     start_date_str = start_date.strftime('%d-%m-%Y')
     
     logging.info(f"Loading data from {start_date_str} to {target_date_str}")
     
-    # Use MongoDB aggregation pipeline to parse and filter dates server-side
+    # Query MongoDB for date range (dates stored as datetime objects)
     pipeline = [
         {
-            '$addFields': {
-                'parsed_date': {
-                    '$dateFromString': {
-                        'dateString': '$date',
-                        'format': '%d-%m-%Y',
-                        'onError': None,  # Set to None for invalid dates
-                        'onNull': None
-                    }
-                }
-            }
-        },
-        {
             '$match': {
-                'parsed_date': {
+                'date': {
                     '$gte': start_date,
-                    '$lte': target_dt
+                    '$lte': end_of_target_day  # Include entire target day
                 }
-            }
-        },
-        {
-            '$project': {
-                'parsed_date': 0  # Remove the temporary parsed_date field
             }
         }
     ]
@@ -73,7 +58,7 @@ def load_stock_data(
     client.close()
     
     if not data:
-        logging.warning(f"No data found for date range {start_date.date()} to {target_dt.date()}")
+        logging.warning(f"No data found for date range {start_date.date()} to {target_date.date()}")
         return pd.DataFrame()
     
     logging.info(f"Loaded {len(data)} records from MongoDB (filtered server-side)")
@@ -109,9 +94,9 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with parsed numeric and date fields
     """
-    # Parse date from DD-MM-YYYY format
+    # Date is already datetime from MongoDB, ensure it's pandas datetime64
     if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date'], format='%d-%m-%Y', errors='coerce')
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
     
     # Parse change from percentage string (e.g., "-0.22%") and store as pct_change
     # Handle cases where change is "-" or other invalid values

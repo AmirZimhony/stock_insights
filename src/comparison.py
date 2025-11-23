@@ -14,7 +14,7 @@ def add_comparisons(
     target_collection: str,
     source_collection: str,
     target_dt: datetime,
-    prev_date: str
+    prev_date: datetime
 ) -> pd.DataFrame:
     """
     Add comparison data from previous day
@@ -25,7 +25,7 @@ def add_comparisons(
         target_collection: Target collection (daily_stock_summaries)
         source_collection: Source collection (stocks_merged)
         target_dt: Target date as datetime object
-        prev_date: Previous date as DD-MM-YYYY string (required)
+        prev_date: Previous date as datetime object
         
     Returns:
         DataFrame with comparison fields added
@@ -34,8 +34,9 @@ def add_comparisons(
         logging.warning("Empty DataFrame provided to add_comparisons")
         return df
     
+    prev_date_str = prev_date.strftime('%d-%m-%Y')
     logging.info("Adding comparison data from previous day")
-    logging.info(f"Using previous date: {prev_date}")
+    logging.info(f"Using previous date: {prev_date_str}")
     
     # Try primary strategy: query from daily_stock_summaries
     prev_data = _query_summaries(db_name, target_collection, prev_date)
@@ -68,9 +69,16 @@ def _query_summaries(db_name: str, collection_name: str, prev_date: str) -> Dict
         db = client[db_name]
         collection = db[collection_name]
         
-        # Query for previous date (summaries collection uses DD-MM-YYYY string format)
-        # Use exact match since we're querying for a single day
-        query = {'date': prev_date}
+        prev_date_str = prev_date.strftime('%d-%m-%Y')
+        
+        # Query for entire day (handles any time component in stored datetime)
+        end_of_day = prev_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        query = {
+            'date': {
+                '$gte': prev_date,
+                '$lte': end_of_day
+            }
+        }
         
         cursor = collection.find(query)
         data = list(cursor)
@@ -86,11 +94,9 @@ def _query_summaries(db_name: str, collection_name: str, prev_date: str) -> Dict
         lookup = {}
         for record in data:
             key = (record.get('ticker'), record.get('exchange'))
-            # Keep date as DD-MM-YYYY string (as stored in MongoDB)
-            prev_date_from_record = record.get('date')
             
             lookup[key] = {
-                'prev_date': prev_date_from_record,  # Keep as string
+                'prev_date': record.get('date'),  # datetime object
                 'pct_change': record.get('pct_change'),
                 'vol_ratio': record.get('vol_ratio'),
                 'consistency_score': record.get('consistency_score'),
@@ -119,15 +125,14 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: str) -> Dict:
         db = client[db_name]
         collection = db[collection_name]
         
-        # Calculate next date string for range query
-        # Parse prev_date, add 1 day, format back to string
-        prev_date_dt = datetime.strptime(prev_date, '%d-%m-%Y')
-        next_date_str = (prev_date_dt + timedelta(days=1)).strftime('%d-%m-%Y')
+        prev_date_str = prev_date.strftime('%d-%m-%Y')
         
+        # Query for entire day (handles any time component in stored datetime)
+        end_of_day = prev_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         query = {
             'date': {
                 '$gte': prev_date,
-                '$lt': next_date_str
+                '$lte': end_of_day
             }
         }
         
@@ -181,25 +186,26 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: str) -> Dict:
         return {}
 
 
-def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: str, target_date: datetime) -> pd.DataFrame:
+def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: datetime, target_date: datetime) -> pd.DataFrame:
     """
     Calculate deltas between current and previous day
     
     Args:
         df: Current day DataFrame
         prev_data: Dictionary of previous day data
-        prev_date: Previous date as DD-MM-YYYY string
-        target_date: Target date as datetime (use this instead of max() for DataFrame comparison)
+        prev_date: Previous date as datetime object
+        target_date: Target date as datetime object (used to filter DataFrame)
         
     Returns:
         DataFrame with comparison fields
     """
-    # Use target_date instead of max()
-    latest_date = target_date
+    # Use target_date instead of max() to avoid issues with stale data
+    # Define date range for target date to handle time components
+    end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
     
     def get_comparison(row):
-        # Only calculate for latest date
-        if row['date'] != latest_date:
+        # Only calculate for target date (using range to handle time components)
+        if not (target_date <= row['date'] <= end_of_day):
             return {
                 'prev_date': None,
                 'delta_pct_change': None,
@@ -233,15 +239,13 @@ def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: str, target_
         if prev.get('consistency_score') is not None and row.get('consistency_score') is not None:
             delta_consistency = row['consistency_score'] - prev['consistency_score']
         
-        # Use date from record (string) if available, otherwise use prev_date string
+        # Use date from record as datetime object
         prev_date_value = prev.get('prev_date')
         if prev_date_value is None:
             prev_date_value = prev_date
-        elif isinstance(prev_date_value, datetime):
-            prev_date_value = prev_date_value.strftime('%d-%m-%Y')
         
         return {
-            'prev_date': prev_date_value,  # Keep as DD-MM-YYYY string
+            'prev_date': prev_date_value,  # datetime object
             'delta_pct_change': delta_pct_change,
             'delta_vol_ratio': delta_vol_ratio,
             'delta_consistency': delta_consistency,
