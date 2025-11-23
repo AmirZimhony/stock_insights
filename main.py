@@ -18,21 +18,24 @@ from src.pipeline import run_pipeline
 def main():
     """Main CLI entrypoint"""
     # Parse command-line arguments first to get date and env for log filename
-    args, db_name, source_collection, target_collection, thresholds = parse_args()
+    date, prev_date, env, db_name, source_collection, target_collection, thresholds = parse_args()
     
-    # Setup logging with date and environment for filename
-    setup_logging(date=args.date, env=args.env)
+    # Setup logging with date and environment for filename (convert to DD-MM-YYYY for filename)
+    date_str = date.strftime('%d-%m-%Y')
+    setup_logging(date=date_str, env=env)
     
     logging.info(f"Daily Stock Insights Pipeline")
-    logging.info(f"Date: {args.date}")
-    logging.info(f"Environment: {args.env}")
+    logging.info(f"Previous date: {prev_date.strftime('%d-%m-%Y')}")
+    logging.info(f"Target date: {date_str}")
+    logging.info(f"Environment: {env}")
     logging.info(f"Database: {db_name}")
     logging.info(f"Source: {source_collection}")
     logging.info(f"Target: {target_collection}")
     
     # Run pipeline
     result = run_pipeline(
-        date=args.date,
+        date=date,
+        prev_date=prev_date,
         db_name=db_name,
         source_collection=source_collection,
         target_collection=target_collection,

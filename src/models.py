@@ -116,23 +116,7 @@ class DailySummary(BaseModel):
         import pandas as pd
         data = self.model_dump()
         
-        # Convert date fields to DD-MM-YYYY string format
-        if 'date' in data and data['date'] is not None:
-            if pd.isna(data['date']):
-                data['date'] = None
-            elif isinstance(data['date'], datetime):
-                data['date'] = data['date'].strftime('%d-%m-%Y')
-        
-        # Convert comparison.prev_date to string format
-        if 'comparison' in data and isinstance(data['comparison'], dict):
-            if 'prev_date' in data['comparison'] and data['comparison']['prev_date'] is not None:
-                prev_date = data['comparison']['prev_date']
-                if pd.isna(prev_date):
-                    data['comparison']['prev_date'] = None
-                elif isinstance(prev_date, datetime):
-                    data['comparison']['prev_date'] = prev_date.strftime('%d-%m-%Y')
-        
-        # Clean any remaining NaT values
+        # Clean NaT values (keep datetime objects as-is for MongoDB)
         for key, value in data.items():
             if pd.isna(value):
                 data[key] = None

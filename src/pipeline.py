@@ -2,6 +2,7 @@
 Pipeline orchestrator - Main pipeline execution flow
 """
 import logging
+from datetime import datetime
 from typing import Dict
 from src.data_loader import load_stock_data
 from src.metrics import calculate_metrics
@@ -10,7 +11,8 @@ from src.mongo_writer import upsert_summaries
 
 
 def run_pipeline(
-    date: str,
+    date: datetime,
+    prev_date: datetime,
     db_name: str,
     source_collection: str,
     target_collection: str,
@@ -20,7 +22,8 @@ def run_pipeline(
     Run the complete daily stock insights pipeline
     
     Args:
-        date: Target date as YYYY-MM-DD string
+        date: Target date as datetime object
+        prev_date: Previous date as datetime object
         db_name: Database name
         source_collection: Source collection name
         target_collection: Target collection name
@@ -29,7 +32,8 @@ def run_pipeline(
     Returns:
         Dictionary with pipeline results
     """
-    logging.info(f"Starting pipeline for date: {date}")
+    date_str = date.strftime('%d-%m-%Y')
+    logging.info(f"Starting pipeline for date: {date_str}")
     logging.info(f"Database: {db_name}")
     logging.info(f"Source: {source_collection}, Target: {target_collection}")
     
@@ -64,7 +68,8 @@ def run_pipeline(
             db_name=db_name,
             target_collection=target_collection,
             source_collection=source_collection,
-            target_date=date
+            target_dt=date,
+            prev_date=prev_date
         )
         
         # Step 4: Upsert to MongoDB
@@ -72,13 +77,14 @@ def run_pipeline(
         result = upsert_summaries(
             df=df,
             db_name=db_name,
-            target_collection=target_collection
+            target_collection=target_collection,
+            target_date=date
         )
         
         # Prepare final result
         final_result = {
             'success': True,
-            'date': date,
+            'date': date_str,
             'count': result.get('upserted', 0),
             'total': result.get('total', 0),
             'errors': result.get('errors', 0)
