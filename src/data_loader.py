@@ -94,9 +94,14 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with parsed numeric and date fields
     """
-    # Date is already datetime from MongoDB, ensure it's pandas datetime64
+    # Date is already datetime from MongoDB, ensure it's pandas datetime64 with UTC timezone
     if 'date' in df.columns:
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        # Ensure timezone-aware UTC to match command-line parsed dates
+        if df['date'].dt.tz is None:
+            df['date'] = df['date'].dt.tz_localize('UTC')
+        else:
+            df['date'] = df['date'].dt.tz_convert('UTC')
     
     # Parse change from percentage string (e.g., "-0.22%") and store as pct_change
     # Handle cases where change is "-" or other invalid values
