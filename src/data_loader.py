@@ -66,18 +66,27 @@ def load_stock_data(
     # Convert to DataFrame
     df = pd.DataFrame(data)
     
+    # Debug: Check date distribution from MongoDB
+    if 'date' in df.columns:
+        date_counts = df['date'].value_counts().sort_index()
+        logging.info(f"MongoDB data - First date: {date_counts.index[0]}, Last date: {date_counts.index[-1]}")
+        logging.info(f"Records by date: {dict(list(date_counts.items())[:3])} ... {dict(list(date_counts.items())[-3:])}")
+    
     # Drop MongoDB _id field
     if '_id' in df.columns:
         df = df.drop('_id', axis=1)
     
     # Parse string fields to proper types
     df = _parse_fields(df)
+    logging.info(f"After parsing - Records: {len(df)}, Date range: {df['date'].min()} to {df['date'].max()}")
     
     # Derive required fields
     df = _derive_fields(df)
+    logging.info(f"After deriving - Records: {len(df)}, Date range: {df['date'].min()} to {df['date'].max()}")
     
     # Filter to only include records with required fields
     df = _validate_data(df)
+    logging.info(f"After validation - Records: {len(df)}, Date range: {df['date'].min()} to {df['date'].max()}")
     
     logging.info(f"Processed {len(df)} valid records")
     
@@ -117,11 +126,7 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
         df['volume'] = df['volume'].astype(str).str.replace(',', '')
         df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
     
-    # Map input field names to internal names
-    if 'name' in df.columns and 'company' not in df.columns:
-        df['company'] = df['name']
-    if 'last_price' in df.columns and 'price' not in df.columns:
-        df['price'] = df['last_price']
+   
     
     # Parse num_of_rising_days from string to int
     if 'num_of_rising_days' in df.columns:
@@ -168,12 +173,12 @@ def _derive_fields(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with derived fields
     """
-    # Calculate prev_close from price and pct_change
-    # pct_change = (price - prev_close) / prev_close * 100
-    # Rearranging: prev_close = price / (1 + pct_change/100)
+    # Calculate prev_close from last_price and pct_change
+    # pct_change = (last_price - prev_close) / prev_close * 100
+    # Rearranging: prev_close = last_price / (1 + pct_change/100)
     df['prev_close'] = df.apply(
-        lambda row: row['price'] / (1 + row['pct_change'] / 100) 
-        if row['pct_change'] != -100 else row['price'],
+        lambda row: row['last_price'] / (1 + row['pct_change'] / 100) 
+        if row['pct_change'] != -100 else row['last_price'],
         axis=1
     )
     
@@ -191,10 +196,6 @@ def _derive_fields(df: pd.DataFrame) -> pd.DataFrame:
     # exchange_country = exchange + "|" + country
     df['exchange_country'] = df['exchange'] + '|' + df['country']
     
-    # Rename price to last_price for output
-    if 'price' in df.columns:
-        df['last_price'] = df['price']
-    
     return df
 
 
@@ -209,14 +210,22 @@ def _validate_data(df: pd.DataFrame) -> pd.DataFrame:
         Cleaned DataFrame
     """
     required_cols = [
-        'ticker', 'date', 'price', 'volume', 
-        'exchange', 'pct_change'
+        'ticker', 'date', 'last_price', 'volume', 
+        'exchange', 'change'
     ]
     
     # Check required columns exist
     missing = [col for col in required_cols if col not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
+    
+    # Debug: Check which columns have nulls before dropping
+    for col in required_cols:
+        null_count = df[col].isna().sum()
+        if null_count > 0:
+            logging.warning(f"Column '{col}' has {null_count} null values")
+            null_dates = df[df[col].isna()]['date'].dt.strftime('%d-%m-%Y').unique()
+            logging.warning(f"Dates with null {col}: {sorted(null_dates)[-5:]} (showing last 5)")
     
     # Remove rows with null required fields
     initial_count = len(df)

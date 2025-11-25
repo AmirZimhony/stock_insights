@@ -170,10 +170,10 @@ def _prepare_documents(df: pd.DataFrame) -> List[Dict]:
             # Create daily summary
             summary = DailySummary(
                 ticker=row['ticker'],
-                name=row.get('company') or row.get('name'),
+                name=row.get('name'),
                 exchange=row['exchange'],
                 date=row['date'],
-                last_price=row.get('last_price') or row.get('price'),
+                last_price=row.get('last_price'),
                 prev_close=row.get('prev_close'),
                 pct_change=row['pct_change'],
                 volume=row['volume'],
