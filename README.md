@@ -54,7 +54,7 @@ python main.py \
 - **ticker** (string): Stock ticker symbol
 - **name** (string, optional): Company name
 - **exchange** (string): Stock exchange (e.g., "NASDAQ", "TASE")
-- **date** (string): Date in DD-MM-YYYY format (e.g., "13-11-2025")
+- **date** (datetime): Date stored as UTC datetime object
 
 ### Price Data
 - **last_price** (float): Current day's closing price
@@ -104,7 +104,7 @@ Measures price movement consistency over the lookback period:
 
 ### Comparison Data (Previous Day Deltas)
 Nested object comparing current day to previous day:
-- **comparison.prev_date** (string, optional): Previous day's date in DD-MM-YYYY format, or null if no previous data found
+- **comparison.prev_date** (datetime, optional): Previous day's date as UTC datetime, or null if no previous data found
 - **comparison.delta_pct_change** (float, optional): Change in pct_change from previous day (current - previous)
 - **comparison.delta_vol_ratio** (float, optional): Change in vol_ratio from previous day
 - **comparison.delta_consistency** (float, optional): Change in consistency_score from previous day
