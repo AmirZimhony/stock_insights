@@ -17,7 +17,6 @@ def run_pipeline(
     source_collection: str,
     target_collection: str,
     thresholds: Dict,
-    prev_date: str
 ) -> Dict:
     """
     Run the complete daily stock insights pipeline
@@ -65,8 +64,6 @@ def run_pipeline(
         
         # Step 3: Add comparisons
         logging.info("Step 3/4: Adding comparisons to previous day...")
-        from datetime import datetime
-        target_dt = datetime.strptime(date, '%d-%m-%Y')
         df = add_comparisons(
             df=df,
             db_name=db_name,

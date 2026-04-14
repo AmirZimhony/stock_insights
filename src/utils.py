@@ -4,7 +4,7 @@ Utility functions shared across modules
 import os
 import argparse
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient
 from config import load_config
 
@@ -57,10 +57,10 @@ def parse_args():
     
     args = parser.parse_args()
     
-    # Parse date strings to datetime objects
+    # Parse date strings to datetime objects with UTC timezone
     try:
-        date = datetime.strptime(args.date, '%d-%m-%Y')
-        prev_date = datetime.strptime(args.prev_date, '%d-%m-%Y')
+        date = datetime.strptime(args.date, '%d-%m-%Y').replace(tzinfo=timezone.utc)
+        prev_date = datetime.strptime(args.prev_date, '%d-%m-%Y').replace(tzinfo=timezone.utc)
     except ValueError as e:
         logging.error(f"Invalid date format: {e}")
         raise ValueError(f"Dates must be in DD-MM-YYYY format. Error: {e}")
