@@ -157,7 +157,7 @@ cd docker && docker-compose up -d
 ## Future Improvements
 
 **Improved prev_date comparison mechanism**
-- Consider keeping in metadata table the last date each market was active, for each market. These prev dates will be passed to this job. The current mechanism (today -1, if doesn't exist then use raw data for computing prev date data) isn't very reliable.  
+- Consider keeping in metadata table the last date each market was active, for each market. These prev dates will be passed to this job. The current mechanism (today -1, if doesn't exist then use raw data for computing prev date data) isn't very reliable. DONE.  
 
 **Comparison Logic Enhancement:**
 - Consider changing the standout metrics and bootstrap logic to use `industry` instead of `sector` for grouping. Currently, the pipeline groups by `exchange_sector` (21 sectors), but using `exchange_industry` (273 industries) would provide more granular comparisons. Note that with more granular groups, each industry group will have fewer stocks than sector groups, which may increase bootstrap fallback usage when groups have <5 stocks.

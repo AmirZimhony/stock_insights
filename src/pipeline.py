@@ -3,7 +3,7 @@ Pipeline orchestrator - Main pipeline execution flow
 """
 import logging
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 from src.data_loader import load_stock_data
 from src.metrics import calculate_metrics
 from src.comparison import add_comparisons
@@ -12,23 +12,22 @@ from src.mongo_writer import upsert_summaries
 
 def run_pipeline(
     date: datetime,
-    prev_date: datetime,
+    prev_date: Optional[datetime],
     db_name: str,
     source_collection: str,
     target_collection: str,
-    thresholds: Dict,
+    thresholds: Dict
 ) -> Dict:
     """
     Run the complete daily stock insights pipeline
     
     Args:
         date: Target date as datetime object
-        prev_date: Previous date as datetime object
+        prev_date: Previous date as datetime object (optional)
         db_name: Database name
         source_collection: Source collection name
         target_collection: Target collection name
         thresholds: Dictionary of threshold values
-        prev_date: Previous date for comparisons as DD-MM-YYYY string (required)
         
     Returns:
         Dictionary with pipeline results
@@ -62,16 +61,24 @@ def run_pipeline(
         logging.info("Step 2/4: Calculating metrics...")
         df = calculate_metrics(df, thresholds)
         
-        # Step 3: Add comparisons
-        logging.info("Step 3/4: Adding comparisons to previous day...")
-        df = add_comparisons(
-            df=df,
-            db_name=db_name,
-            target_collection=target_collection,
-            source_collection=source_collection,
-            target_dt=date,
-            prev_date=prev_date
-        )
+        # Step 3: Add comparisons (optional if prev_date is provided)
+        if prev_date is not None:
+            logging.info("Step 3/4: Adding comparisons to previous day...")
+            df = add_comparisons(
+                df=df,
+                db_name=db_name,
+                target_collection=target_collection,
+                source_collection=source_collection,
+                target_dt=date,
+                prev_date=prev_date
+            )
+        else:
+            logging.info("Step 3/4: Skipping comparisons (no previous date provided)...")
+            df['comparison_prev_date'] = None
+            df['comparison_delta_pct_change'] = None
+            df['comparison_delta_vol_ratio'] = None
+            df['comparison_delta_consistency'] = None
+            df['comparison_prev_exists'] = False
         
         # Step 4: Upsert to MongoDB
         logging.info("Step 4/4: Upserting to MongoDB...")

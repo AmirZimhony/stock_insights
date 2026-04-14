@@ -25,7 +25,10 @@ def main():
     setup_logging(date=date_str, env=env)
     
     logging.info(f"Daily Stock Insights Pipeline")
-    logging.info(f"Previous date: {prev_date.strftime('%d-%m-%Y')}")
+    if prev_date is not None:
+        logging.info(f"Previous date: {prev_date.strftime('%d-%m-%Y')}")
+    else:
+        logging.info("Previous date: not provided (comparison skipped)")
     logging.info(f"Target date: {date_str}")
     logging.info(f"Environment: {env}")
     logging.info(f"Database: {db_name}")
