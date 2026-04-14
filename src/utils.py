@@ -59,7 +59,7 @@ def parse_args():
     
     # Parse date strings to datetime objects with UTC timezone
     try:
-        date = datetime.strptime(args.date, '%d-%m-%Y')
+        date = datetime.strptime(args.date, '%d-%m-%Y').replace(tzinfo=timezone.utc)
     except ValueError as e:
         logging.error(f"Invalid date format: {e}")
         raise ValueError(f"Dates must be in DD-MM-YYYY format. Error: {e}")
@@ -67,7 +67,7 @@ def parse_args():
     prev_date = None
     if args.prev_date:
         try:
-            prev_date = datetime.strptime(args.prev_date, '%d-%m-%Y')
+            prev_date = datetime.strptime(args.prev_date, '%d-%m-%Y').replace(tzinfo=timezone.utc)
         except ValueError as e:
             logging.error(f"Invalid prev-date format: {e}")
             raise ValueError(f"prev-date must be in DD-MM-YYYY format. Error: {e}")
