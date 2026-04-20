@@ -71,6 +71,8 @@ def _calculate_volume_metrics(df: pd.DataFrame, spike_threshold: float) -> pd.Da
     
     # Group by ticker to calculate rolling stats
     def calc_vol_metrics(group):
+        # Re-attach grouping column (pandas >=3.0 excludes it from the group)
+        group = group.assign(ticker=group.name)
         # Rolling median volume (10 days)
         group = group.sort_values('date')
         group['vol_median'] = group['volume'].rolling(window=10, min_periods=1).median()
@@ -103,6 +105,8 @@ def _identify_new_tickers(df: pd.DataFrame) -> pd.DataFrame:
     
     # For each ticker, check if this is their first appearance
     def is_new(group):
+        # Re-attach grouping column (pandas >=3.0 excludes it from the group)
+        group = group.assign(ticker=group.name)
         group = group.sort_values('date')
         # Mark as new if only appears on the latest date
         group['new_in_market'] = (group['date'] == latest_date) & (len(group) == 1)
@@ -148,6 +152,8 @@ def _calculate_robustness_metrics(df: pd.DataFrame) -> pd.DataFrame:
     latest_date, latest_df = _get_latest_date_df(df)
     
     def calc_robust_z(group):
+        # Re-attach grouping column (pandas >=3.0 excludes it from the group)
+        group = group.assign(exchange_sector=group.name)
         if len(group) > 1:
             group['robust_rel_z'] = stats.zscore(group['robust_abs'], nan_policy='omit')
         else:
@@ -190,6 +196,8 @@ def _calculate_standout_metrics(df: pd.DataFrame, z_threshold: float, min_points
         logging.info(f"All {len(sector_counts)} sectors have >= {min_points} stocks (no bootstrap needed)")
     
     def calc_standout_z(group):
+        # Re-attach grouping column (pandas >=3.0 excludes it from the group)
+        group = group.assign(exchange_sector=group.name)
         # Use sector if enough data points, otherwise use exchange
         if len(group) >= min_points:
             if len(group) > 1:
@@ -250,6 +258,8 @@ def _calculate_consistency_metrics(df: pd.DataFrame, trend_up_days: int, trend_d
     
     # Group by ticker to calculate 10-day stats
     def calc_consistency(group):
+        # Re-attach grouping column (pandas >=3.0 excludes it from the group)
+        group = group.assign(ticker=group.name)
         group = group.sort_values('date')
         
         # consistency_score = 1 / (1 + std(pct_change over 10 days))

@@ -113,13 +113,10 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
             df['date'] = df['date'].dt.tz_convert('UTC')
     
     # Parse change from percentage string (e.g., "-0.22%") and store as pct_change
-    # Handle cases where change is "-" or other invalid values
+    # Unparseable values (e.g., "-") are treated as 0 to keep the record instead of dropping it
     if 'change' in df.columns:
-        # Strip % and handle cases where value is just "-"
         df['pct_change'] = df['change'].astype(str).str.rstrip('%')
-        # Replace only when the entire value is "-" (not negative numbers)
-        df['pct_change'] = df['pct_change'].apply(lambda x: '' if x == '-' else x)
-        df['pct_change'] = pd.to_numeric(df['pct_change'], errors='coerce')
+        df['pct_change'] = pd.to_numeric(df['pct_change'], errors='coerce').fillna(0.0)
     
     # Parse volume from comma-separated string (e.g., "98,935")
     if 'volume' in df.columns:
@@ -132,9 +129,9 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
     if 'num_of_rising_days' in df.columns:
         df['num_of_rising_days'] = pd.to_numeric(df['num_of_rising_days'], errors='coerce').fillna(0).astype(int)
     
-    # Parse accumulated_change from string
+    # Parse accumulated_change from string; unparseable values fall back to 0 to keep the record
     if 'accumulated_change' in df.columns:
-        df['accumulated_change'] = pd.to_numeric(df['accumulated_change'], errors='coerce')
+        df['accumulated_change'] = pd.to_numeric(df['accumulated_change'], errors='coerce').fillna(0.0)
     
     # Parse pe_ratio from string
     if 'pe_ratio' in df.columns:
