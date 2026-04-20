@@ -3,7 +3,20 @@ Pydantic models for data validation
 """
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+import pandas as pd
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _coerce_nans_to_none(data):
+    """Replace pandas missing values (NaN/NaT) with None on any dict input."""
+    if not isinstance(data, dict):
+        return data
+    def is_missing(v):
+        try:
+            return bool(pd.isna(v))
+        except (TypeError, ValueError):
+            return False
+    return {k: (None if is_missing(v) else v) for k, v in data.items()}
 
 
 class StockDataInput(BaseModel):
@@ -32,6 +45,8 @@ class ComparisonData(BaseModel):
     delta_vol_ratio: Optional[float] = None
     delta_consistency: Optional[float] = None
     prev_exists: bool = False
+    
+    _coerce_nans = model_validator(mode='before')(_coerce_nans_to_none)
 
 
 class AnalysisMeta(BaseModel):
@@ -104,6 +119,8 @@ class DailySummary(BaseModel):
     # Metadata
     analysis_meta: AnalysisMeta
     
+    _coerce_nans = model_validator(mode='before')(_coerce_nans_to_none)
+    
     @field_validator('trend_label')
     @classmethod
     def validate_trend_label(cls, v):
@@ -112,18 +129,6 @@ class DailySummary(BaseModel):
         return v
     
     def to_mongo_dict(self):
-        """Convert to MongoDB-compatible dictionary"""
-        import pandas as pd
-        data = self.model_dump()
-        
-        # Clean NaT values (keep datetime objects as-is for MongoDB)
-        for key, value in data.items():
-            if pd.isna(value):
-                data[key] = None
-            elif isinstance(value, dict):
-                for nested_key, nested_value in value.items():
-                    if pd.isna(nested_value):
-                        data[key][nested_key] = None
-        
-        return data
+        """Convert to MongoDB-compatible dictionary (NaN/NaT already coerced to None at validation)."""
+        return self.model_dump()
 
