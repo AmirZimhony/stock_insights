@@ -46,7 +46,7 @@ RUN echo "Build Info:" > /app/build_info.txt && \
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import pymongo; print('Health check passed')" || exit 1
+    CMD python -c "import pymongo, google.cloud.storage, google.cloud.bigquery; print('Health check passed')" || exit 1
 
 # Default command - can be overridden with docker run arguments
 CMD ["sh", "-c", "python main.py"]

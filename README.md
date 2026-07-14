@@ -17,7 +17,8 @@ python main.py --date 10-11-2025 --env dev
 ## Usage
 
 ```bash
-python main.py --date DD-MM-YYYY [--env dev|prod] [--db-name NAME] [--source-collection NAME] [--target-collection NAME]
+python main.py --date DD-MM-YYYY [--env dev|prod] [--db-name NAME] [--source-collection NAME] [--target-collection NAME] \
+  [--output-bucket NAME] [--output-prefix PREFIX] [--bq-dataset NAME] [--bq-table NAME]
 ```
 
 Configuration is in `config.json` (thresholds, dev/prod database names).
@@ -141,6 +142,47 @@ Nested object with pipeline information:
 **Bootstrapping:**
 - When sector/industry groups have <5 stocks, use exchange-wide medians.
 - Sets `bootstrap_source` and reduces confidence by 20%.
+
+## GCP Output (GCS + BigQuery)
+
+In addition to writing daily summaries to MongoDB, the pipeline writes each run
+to Google Cloud Storage as Parquet and then loads that same file into BigQuery.
+
+**Auth:** set `GOOGLE_APPLICATION_CREDENTIALS` to the path of a GCP service
+account JSON key (Storage Object Admin + BigQuery Data Editor + BigQuery Job
+User). The pipeline fails fast if the variable is unset or the file is missing.
+
+**Configuration:** four CLI args, all overridable via `config.json`:
+
+- `--output-bucket` (e.g. `stocker_data_staging`)
+- `--output-prefix` (e.g. `daily_stock_summaries`)
+- `--bq-dataset` (e.g. `stocker_staging`)
+- `--bq-table` (e.g. `daily_stock_summaries`)
+
+If any of the four is missing, the GCP step is skipped and only MongoDB is written.
+
+**GCS layout** (Hive-partitioned, BigQuery-friendly):
+
+```
+gs://<output_bucket>/<output_prefix>/date=YYYY-MM-DD/daily_summaries.parquet
+```
+
+**BigQuery load:** Parquet load job with `WRITE_APPEND` and `autodetect=True`;
+the destination project is inferred from `GOOGLE_APPLICATION_CREDENTIALS`.
+
+**Testing defaults** (already in `config.json` `dev`):
+
+```bash
+python main.py --date 10-11-2025 --env dev
+# uses:
+#   OUTPUT_BUCKET=stocker_data_staging
+#   OUTPUT_PREFIX=daily_stock_summaries
+#   BQ_DATASET=stocker_staging
+#   BQ_TABLE=daily_stock_summaries
+```
+
+Airflow/prod passes all four explicitly, matching the pattern used for
+`--db-name` / `--source-collection` / `--target-collection`.
 
 ## Docker
 
