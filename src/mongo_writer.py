@@ -16,45 +16,28 @@ def upsert_summaries(
     df: pd.DataFrame,
     db_name: str,
     target_collection: str,
-    target_date: datetime = None
 ) -> Dict:
     """
-    Upsert daily summaries to MongoDB
+    Upsert daily summaries to MongoDB.
+
+    The caller is expected to pass a DataFrame already filtered to the target
+    date (see pipeline.run_pipeline). This writer simply persists what it is given.
     
     Args:
-        df: DataFrame with calculated summaries
+        df: DataFrame containing only the target-date rows to persist
         db_name: Database name
         target_collection: Target collection name
-        target_date: Target date as datetime object (used to filter the correct date)
         
     Returns:
         Dictionary with operation results
     """
-    # TODO: Remove most timing logs before pushing - these are for performance debugging only
     start_time = time.time()
     
     if df.empty:
         logging.warning("Empty DataFrame provided to upsert_summaries")
         return {'upserted': 0, 'errors': 0}
     
-    # Filter to target date
-    stage_start = time.time()
-    if not target_date:
-        raise ValueError("target_date is required for upsert_summaries")
-    
-    # Use date range to handle any time component in stored datetime
-    end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-    df_latest = df[(df['date'] >= target_date) & (df['date'] <= end_of_day)].copy()
-    
-    if df_latest.empty:
-        target_date_str = target_date.strftime('%d-%m-%Y')
-        available_dates = df['date'].dt.strftime('%d-%m-%Y').unique()
-        raise ValueError(
-            f"No data found for target date {target_date_str}. "
-            f"Available dates: {sorted(available_dates)}"
-        )
-    
-    logging.info(f"Filtered to latest date: {time.time() - stage_start:.2f}s - {len(df_latest)} records")
+    df_latest = df
     
     logging.info(f"Upserting {len(df_latest)} summaries to {db_name}.{target_collection}")
     

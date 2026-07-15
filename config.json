@@ -1,8 +1,14 @@
 {
   "dev": {
-    "db_name": "stock_test1",
-    "source_collection": "stocks_merged_test",
-    "target_collection": "daily_stock_summaries_dev"
+    "db_name": "stock_staging",
+    "source_collection": "stocks_merged_staging",
+    "target_collection": "daily_stock_summaries_dev",
+    "gcp": {
+      "output_bucket": "stocker_data_staging",
+      "output_prefix": "daily_stock_summaries_staging",
+      "bq_dataset": "stocker_staging",
+      "bq_table": "daily_stock_summaries_staging"
+    }
   },
   "thresholds": {
     "lookback_days": 17,

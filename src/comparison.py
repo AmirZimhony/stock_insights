@@ -188,32 +188,21 @@ def _query_raw_data(db_name: str, collection_name: str, prev_date: str) -> Dict:
 
 def _calculate_deltas(df: pd.DataFrame, prev_data: Dict, prev_date: datetime, target_date: datetime) -> pd.DataFrame:
     """
-    Calculate deltas between current and previous day
+    Calculate deltas between current and previous day.
+
+    Note: pipeline.py filters the DataFrame to the target date after this step,
+    so the previous inline per-row date guard is redundant and has been removed.
     
     Args:
-        df: Current day DataFrame
+        df: Current day DataFrame (may still be multi-day at this stage)
         prev_data: Dictionary of previous day data
         prev_date: Previous date as datetime object
-        target_date: Target date as datetime object (used to filter DataFrame)
+        target_date: Target date as datetime object (kept for signature stability)
         
     Returns:
         DataFrame with comparison fields
     """
-    # Use target_date instead of max() to avoid issues with stale data
-    # Define date range for target date to handle time components
-    end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-    
     def get_comparison(row):
-        # Only calculate for target date (using range to handle time components)
-        if not (target_date <= row['date'] <= end_of_day):
-            return {
-                'prev_date': None,
-                'delta_pct_change': None,
-                'delta_vol_ratio': None,
-                'delta_consistency': None,
-                'prev_exists': False
-            }
-        
         key = (row['ticker'], row['exchange'])
         prev = prev_data.get(key)
         

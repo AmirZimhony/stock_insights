@@ -19,7 +19,7 @@ services:
       - ../config.json:/app/config.json:ro
     restart: "no"
     healthcheck:
-      test: ["CMD", "python", "-c", "import pymongo; print('Health check passed')"]
+      test: ["CMD", "python", "-c", "import pymongo, google.cloud.storage, google.cloud.bigquery; print('Health check passed')"]
       interval: 30s
       timeout: 10s
       retries: 3

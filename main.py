@@ -17,10 +17,11 @@ from src.pipeline import run_pipeline
 
 def main():
     """Main CLI entrypoint"""
-    # Parse command-line arguments first to get date and env for log filename
-    date, prev_date, env, db_name, source_collection, target_collection, thresholds = parse_args()
+    (
+        date, prev_date, env, db_name, source_collection, target_collection,
+        thresholds, output_bucket, output_prefix, bq_dataset, bq_table,
+    ) = parse_args()
     
-    # Setup logging with date and environment for filename (convert to DD-MM-YYYY for filename)
     date_str = date.strftime('%d-%m-%Y')
     setup_logging(date=date_str, env=env)
     
@@ -34,15 +35,25 @@ def main():
     logging.info(f"Database: {db_name}")
     logging.info(f"Source: {source_collection}")
     logging.info(f"Target: {target_collection}")
+    if all([output_bucket, output_prefix, bq_dataset, bq_table]):
+        logging.info(
+            f"GCP output: gs://{output_bucket}/{output_prefix} -> "
+            f"BQ {bq_dataset}.{bq_table}"
+        )
+    else:
+        logging.info("GCP output: not configured (will be skipped)")
     
-    # Run pipeline
     result = run_pipeline(
         date=date,
         prev_date=prev_date,
         db_name=db_name,
         source_collection=source_collection,
         target_collection=target_collection,
-        thresholds=thresholds
+        thresholds=thresholds,
+        output_bucket=output_bucket,
+        output_prefix=output_prefix,
+        bq_dataset=bq_dataset,
+        bq_table=bq_table,
     )
     
     # Log results
