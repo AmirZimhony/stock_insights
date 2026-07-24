@@ -83,6 +83,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -95,6 +96,11 @@ jobs:
             BUILD_TIMESTAMP=${{ github.run_number }}
             BUILD_ID=${{ github.run_id }}
             GIT_HASH=${{ github.sha }}
+
+      - name: Log pushed image
+        run: |
+          echo "Pushed image: amiroz/projects:stock_insights_pr_${{ github.event.number }}"
+          echo "Digest: ${{ steps.build.outputs.digest }}"
 
   # Retag the PR image as latest after merge (no rebuild).
   promote-latest:
@@ -130,6 +136,8 @@ jobs:
 
       - name: Retag PR image as latest
         run: |
-          docker buildx imagetools create \
-            --tag amiroz/projects:stock_insights_latest \
-            "amiroz/projects:stock_insights_pr_${{ steps.pr.outputs.number }}"
+          SRC="amiroz/projects:stock_insights_pr_${{ steps.pr.outputs.number }}"
+          DEST="amiroz/projects:stock_insights_latest"
+          echo "Promoting ${SRC} -> ${DEST}"
+          docker buildx imagetools create --tag "${DEST}" "${SRC}"
+          echo "Latest image: ${DEST}"
