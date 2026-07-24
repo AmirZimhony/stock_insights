@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Use Python 3.11 slim image for multi-platform support
 FROM python:3.11-slim
 
@@ -9,17 +10,24 @@ ARG GIT_HASH
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (git is needed to pip-install the private
+# stocker_metrics dependency below)
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies. GH_PAT (for the private stocker_metrics git
+# dependency) is passed as a BuildKit secret, not an ARG/ENV, so it never
+# ends up readable in `docker history` or an image layer.
+RUN --mount=type=secret,id=gh_pat \
+    git config --global url."https://$(cat /run/secrets/gh_pat)@github.com/".insteadOf "https://github.com/" \
+    && pip install --no-cache-dir -r requirements.txt \
+    && git config --global --unset-all url."https://$(cat /run/secrets/gh_pat)@github.com/".insteadOf
 
 # Copy application code
 COPY main.py .
