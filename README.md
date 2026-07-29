@@ -184,10 +184,21 @@ python main.py --date 10-11-2025 --env dev
 Airflow/prod passes all four explicitly, matching the pattern used for
 `--db-name` / `--source-collection` / `--target-collection`.
 
+## CI/CD
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
+- **lint** — `ruff check` / `ruff format --check`
+- **test** — offline `pytest` suite (`METRICS_ENABLED=false`; MongoDB/GCP mocked)
+- **secret-scan** — `gitleaks`
+- **docker-build** — on PRs only: pushes `amiroz/projects:stock_insights_pr_<PR#>` for testing
+- **promote-latest** — on merge to `main`: retags that PR image to `amiroz/projects:stock_insights_latest` (no rebuild)
+
+Requires these repo secrets: `GH_PAT` (installs the private `stocker_metrics` package), `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`.
+
 ## Docker
 
 ```bash
-./docker-build.sh  # Builds and pushes to Docker Hub
+GH_PAT=<your_github_pat> ./docker-build.sh  # Builds and pushes to Docker Hub
 docker run --env-file .env amiroz/projects:stock_insights_latest --date 10-11-2025 --env prod
 ```
 

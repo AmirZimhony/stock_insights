@@ -1,6 +1,7 @@
 """
 Pipeline orchestrator - Main pipeline execution flow
 """
+
 import logging
 from datetime import datetime
 from typing import Dict, Optional
@@ -25,7 +26,7 @@ def run_pipeline(
 ) -> Dict:
     """
     Run the complete daily stock insights pipeline
-    
+
     Args:
         date: Target date as datetime object
         prev_date: Previous date as datetime object (optional)
@@ -37,37 +38,37 @@ def run_pipeline(
         output_prefix: GCS object prefix under the bucket
         bq_dataset: BigQuery dataset ID
         bq_table: BigQuery table ID
-        
+
     Returns:
         Dictionary with pipeline results
     """
-    date_str = date.strftime('%d-%m-%Y')
+    date_str = date.strftime("%d-%m-%Y")
     logging.info(f"Starting pipeline for date: {date_str}")
     logging.info(f"Database: {db_name}")
     logging.info(f"Source: {source_collection}, Target: {target_collection}")
-    
+
     try:
         logging.info("Step 1/5: Loading stock data...")
         df = load_stock_data(
             db_name=db_name,
             source_collection=source_collection,
             target_date=date,
-            lookback_days=thresholds.get('lookback_days', 10)
+            lookback_days=thresholds.get("lookback_days", 10),
         )
-        
+
         if df.empty:
             logging.warning("No data loaded, pipeline aborted")
             return {
-                'success': False,
-                'count': 0,
-                'error': 'No data found for specified date range'
+                "success": False,
+                "count": 0,
+                "error": "No data found for specified date range",
             }
-        
+
         logging.info(f"Loaded {len(df)} records")
-        
+
         logging.info("Step 2/5: Calculating metrics...")
         df = calculate_metrics(df, thresholds)
-        
+
         if prev_date is not None:
             logging.info("Step 3/5: Adding comparisons to previous day...")
             df = add_comparisons(
@@ -76,24 +77,26 @@ def run_pipeline(
                 target_collection=target_collection,
                 source_collection=source_collection,
                 target_dt=date,
-                prev_date=prev_date
+                prev_date=prev_date,
             )
         else:
-            logging.info("Step 3/5: Skipping comparisons (no previous date provided)...")
-            df['comparison_prev_date'] = None
-            df['comparison_delta_pct_change'] = None
-            df['comparison_delta_vol_ratio'] = None
-            df['comparison_delta_consistency'] = None
-            df['comparison_prev_exists'] = False
+            logging.info(
+                "Step 3/5: Skipping comparisons (no previous date provided)..."
+            )
+            df["comparison_prev_date"] = None
+            df["comparison_delta_pct_change"] = None
+            df["comparison_delta_vol_ratio"] = None
+            df["comparison_delta_consistency"] = None
+            df["comparison_prev_exists"] = False
 
         # Filter to target date once, feed both writers with the same slice.
         # This is the single date filter for the whole pipeline; writers trust
         # their input rather than filtering internally.
         end_of_day = date.replace(hour=23, minute=59, second=59, microsecond=999999)
-        df_latest = df[(df['date'] >= date) & (df['date'] <= end_of_day)].copy()
+        df_latest = df[(df["date"] >= date) & (df["date"] <= end_of_day)].copy()
 
         if df_latest.empty:
-            available_dates = df['date'].dt.strftime('%d-%m-%Y').unique()
+            available_dates = df["date"].dt.strftime("%d-%m-%Y").unique()
             raise ValueError(
                 f"No data found for target date {date_str}. "
                 f"Available dates: {sorted(available_dates)}"
@@ -103,7 +106,7 @@ def run_pipeline(
 
         # Free the multi-day history before network writes to reduce peak RSS.
         del df
-        
+
         logging.info("Step 4/5: Upserting to MongoDB...")
         mongo_result = upsert_summaries(
             df=df_latest,
@@ -134,27 +137,23 @@ def run_pipeline(
                 "bq_dataset/bq_table not fully configured)"
             )
 
-        success = mongo_result.get('errors', 0) == 0 and gcp_error is None
+        success = mongo_result.get("errors", 0) == 0 and gcp_error is None
         final_result = {
-            'success': success,
-            'date': date_str,
-            'count': mongo_result.get('upserted', 0),
-            'total': mongo_result.get('total', 0),
-            'errors': mongo_result.get('errors', 0),
-            'mongo': mongo_result,
-            'gcp': gcp_result if gcp_configured else None,
+            "success": success,
+            "date": date_str,
+            "count": mongo_result.get("upserted", 0),
+            "total": mongo_result.get("total", 0),
+            "errors": mongo_result.get("errors", 0),
+            "mongo": mongo_result,
+            "gcp": gcp_result if gcp_configured else None,
         }
         if gcp_error:
-            final_result['gcp_error'] = gcp_error
+            final_result["gcp_error"] = gcp_error
 
         logging.info(f"Pipeline completed: {final_result}")
-        
+
         return final_result
-        
+
     except Exception as e:
         logging.error(f"Pipeline failed: {e}", exc_info=True)
-        return {
-            'success': False,
-            'count': 0,
-            'error': str(e)
-        }
+        return {"success": False, "count": 0, "error": str(e)}

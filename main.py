@@ -1,11 +1,16 @@
 """
 Main entrypoint for Daily Stock Insights Pipeline
 """
+
 import sys
+import time
 import logging
+
+import stocker_metrics
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -18,14 +23,23 @@ from src.pipeline import run_pipeline
 def main():
     """Main CLI entrypoint"""
     (
-        date, prev_date, env, db_name, source_collection, target_collection,
-        thresholds, output_bucket, output_prefix, bq_dataset, bq_table,
+        date,
+        prev_date,
+        env,
+        db_name,
+        source_collection,
+        target_collection,
+        thresholds,
+        output_bucket,
+        output_prefix,
+        bq_dataset,
+        bq_table,
     ) = parse_args()
-    
-    date_str = date.strftime('%d-%m-%Y')
+
+    date_str = date.strftime("%d-%m-%Y")
     setup_logging(date=date_str, env=env)
-    
-    logging.info(f"Daily Stock Insights Pipeline")
+
+    logging.info("Daily Stock Insights Pipeline")
     if prev_date is not None:
         logging.info(f"Previous date: {prev_date.strftime('%d-%m-%Y')}")
     else:
@@ -42,7 +56,8 @@ def main():
         )
     else:
         logging.info("GCP output: not configured (will be skipped)")
-    
+
+    pipeline_start = time.time()
     result = run_pipeline(
         date=date,
         prev_date=prev_date,
@@ -55,20 +70,25 @@ def main():
         bq_dataset=bq_dataset,
         bq_table=bq_table,
     )
-    
+    pipeline_duration_ms = (time.time() - pipeline_start) * 1000
+
+    stocker_metrics.timing("pipeline_duration_ms", pipeline_duration_ms)
+    stocker_metrics.gauge("records_processed", result.get("count", 0))
+    stocker_metrics.gauge("records_errors", result.get("errors", 0))
+
     # Log results
-    if result['success']:
-        logging.info(f"Pipeline completed successfully")
+    if result["success"]:
+        logging.info("Pipeline completed successfully")
         logging.info(f"Processed: {result['count']} stocks")
         logging.info(f"Total: {result.get('total', result['count'])} records")
-        if result.get('errors', 0) > 0:
+        if result.get("errors", 0) > 0:
             logging.warning(f"Errors: {result['errors']}")
         sys.exit(0)
     else:
+        stocker_metrics.incr("pipeline_failures")
         logging.error(f"Pipeline failed: {result.get('error', 'Unknown error')}")
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

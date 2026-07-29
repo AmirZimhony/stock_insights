@@ -4,6 +4,7 @@ GCP writer - Write daily summaries to GCS (Parquet) and load into BigQuery.
 The caller is expected to pass a DataFrame already filtered to the target
 date (see pipeline.run_pipeline). This writer simply persists what it is given.
 """
+
 import logging
 import os
 import tempfile
@@ -43,11 +44,11 @@ def write_to_gcp(
 
     if df.empty:
         logging.warning("Empty DataFrame provided to write_to_gcp")
-        return {'gcs_uri': None, 'bq_rows': 0, 'errors': 0}
+        return {"gcs_uri": None, "bq_rows": 0, "errors": 0}
 
     _check_credentials()
 
-    date_str = target_date.strftime('%Y-%m-%d')
+    date_str = target_date.strftime("%Y-%m-%d")
     object_name = f"{output_prefix.rstrip('/')}/date={date_str}/daily_summaries.parquet"
     gcs_uri = f"gs://{output_bucket}/{object_name}"
 
@@ -64,9 +65,9 @@ def write_to_gcp(
 
     if not records:
         logging.warning("No valid records to write to GCP")
-        return {'gcs_uri': None, 'bq_rows': 0, 'errors': len(df)}
+        return {"gcs_uri": None, "bq_rows": 0, "errors": len(df)}
 
-    with tempfile.NamedTemporaryFile(suffix='.parquet', delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
         tmp_path = tmp.name
     try:
         stage_start = time.time()
@@ -93,12 +94,12 @@ def write_to_gcp(
         f"errors={errors} in {total_time:.2f}s"
     )
 
-    return {'gcs_uri': gcs_uri, 'bq_rows': bq_rows, 'errors': errors}
+    return {"gcs_uri": gcs_uri, "bq_rows": bq_rows, "errors": errors}
 
 
 def _check_credentials() -> None:
     """Fail fast if GOOGLE_APPLICATION_CREDENTIALS is missing or unreadable."""
-    creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     if not creds_path:
         raise RuntimeError(
             "GOOGLE_APPLICATION_CREDENTIALS env var is not set. "
@@ -120,11 +121,11 @@ def _prepare_records(df: pd.DataFrame) -> List[Dict]:
     for _, row in df.iterrows():
         try:
             comparison = ComparisonData(
-                prev_date=row.get('comparison_prev_date'),
-                delta_pct_change=row.get('comparison_delta_pct_change'),
-                delta_vol_ratio=row.get('comparison_delta_vol_ratio'),
-                delta_consistency=row.get('comparison_delta_consistency'),
-                prev_exists=row.get('comparison_prev_exists', False),
+                prev_date=row.get("comparison_prev_date"),
+                delta_pct_change=row.get("comparison_delta_pct_change"),
+                delta_vol_ratio=row.get("comparison_delta_vol_ratio"),
+                delta_consistency=row.get("comparison_delta_consistency"),
+                prev_exists=row.get("comparison_prev_exists", False),
             )
             analysis_meta = AnalysisMeta(
                 pipeline_version=PIPELINE_VERSION,
@@ -132,55 +133,57 @@ def _prepare_records(df: pd.DataFrame) -> List[Dict]:
                 computed_at=datetime.utcnow(),
             )
             summary = DailySummary(
-                ticker=row['ticker'],
-                name=row.get('name'),
-                exchange=row['exchange'],
-                date=row['date'],
-                last_price=row.get('last_price'),
-                prev_close=row.get('prev_close'),
-                pct_change=row['pct_change'],
-                volume=row['volume'],
-                vol_ratio=row.get('vol_ratio'),
-                vol_z=row.get('vol_z'),
-                vol_spike_flag=row.get('vol_spike_flag', False),
-                new_in_market=row.get('new_in_market', False),
-                sector=row.get('sector'),
-                industry=row.get('industry'),
-                country=row.get('country'),
-                exchange_sector=row.get('exchange_sector'),
-                exchange_industry=row.get('exchange_industry'),
-                exchange_country=row.get('exchange_country'),
-                exchange_return=row.get('exchange_return'),
-                sector_return=row.get('sector_return'),
-                industry_return=row.get('industry_return'),
-                country_return=row.get('country_return'),
-                robust_abs=row.get('robust_abs'),
-                robust_rel_z=row.get('robust_rel_z'),
-                is_robust_on_bad_day=row.get('is_robust_on_bad_day', False),
-                standout_z=row.get('standout_z'),
-                standout_flag=row.get('standout_flag', False),
-                consistency_score=row.get('consistency_score'),
-                num_of_rising_days=int(row['num_of_rising_days']),
-                accumulated_change=row['accumulated_change'],
-                trend_label=row.get('trend_label'),
-                market_cap=row.get('market_cap'),
-                pe_ratio=row.get('pe_ratio'),
+                ticker=row["ticker"],
+                name=row.get("name"),
+                exchange=row["exchange"],
+                date=row["date"],
+                last_price=row.get("last_price"),
+                prev_close=row.get("prev_close"),
+                pct_change=row["pct_change"],
+                volume=row["volume"],
+                vol_ratio=row.get("vol_ratio"),
+                vol_z=row.get("vol_z"),
+                vol_spike_flag=row.get("vol_spike_flag", False),
+                new_in_market=row.get("new_in_market", False),
+                sector=row.get("sector"),
+                industry=row.get("industry"),
+                country=row.get("country"),
+                exchange_sector=row.get("exchange_sector"),
+                exchange_industry=row.get("exchange_industry"),
+                exchange_country=row.get("exchange_country"),
+                exchange_return=row.get("exchange_return"),
+                sector_return=row.get("sector_return"),
+                industry_return=row.get("industry_return"),
+                country_return=row.get("country_return"),
+                robust_abs=row.get("robust_abs"),
+                robust_rel_z=row.get("robust_rel_z"),
+                is_robust_on_bad_day=row.get("is_robust_on_bad_day", False),
+                standout_z=row.get("standout_z"),
+                standout_flag=row.get("standout_flag", False),
+                consistency_score=row.get("consistency_score"),
+                num_of_rising_days=int(row["num_of_rising_days"]),
+                accumulated_change=row["accumulated_change"],
+                trend_label=row.get("trend_label"),
+                market_cap=row.get("market_cap"),
+                pe_ratio=row.get("pe_ratio"),
                 comparison=comparison,
-                confidence=row.get('confidence', 1.0),
-                bootstrap_source=row.get('bootstrap_source'),
+                confidence=row.get("confidence", 1.0),
+                bootstrap_source=row.get("bootstrap_source"),
                 analysis_meta=analysis_meta,
             )
             doc = summary.to_mongo_dict()
             # Composite grouping keys used only internally for metrics
             # calculation; redundant in BigQuery since exchange/sector/
             # industry/country are already separate columns.
-            for redundant_key in ('exchange_sector', 'exchange_industry', 'exchange_country'):
+            for redundant_key in (
+                "exchange_sector",
+                "exchange_industry",
+                "exchange_country",
+            ):
                 doc.pop(redundant_key, None)
             records.append(doc)
         except Exception as e:
-            logging.error(
-                f"Error preparing GCP record for {row.get('ticker')}: {e}"
-            )
+            logging.error(f"Error preparing GCP record for {row.get('ticker')}: {e}")
             continue
     return records
 
@@ -198,56 +201,62 @@ def _build_schema():
     """
     import pyarrow as pa
 
-    ts = pa.timestamp('us', tz='UTC')
-    comparison_type = pa.struct([
-        pa.field('prev_date', ts, nullable=True),
-        pa.field('delta_pct_change', pa.float64(), nullable=True),
-        pa.field('delta_vol_ratio', pa.float64(), nullable=True),
-        pa.field('delta_consistency', pa.float64(), nullable=True),
-        pa.field('prev_exists', pa.bool_(), nullable=False),
-    ])
-    analysis_meta_type = pa.struct([
-        pa.field('pipeline_version', pa.string(), nullable=False),
-        pa.field('generated_by', pa.string(), nullable=False),
-        pa.field('computed_at', ts, nullable=False),
-    ])
+    ts = pa.timestamp("us", tz="UTC")
+    comparison_type = pa.struct(
+        [
+            pa.field("prev_date", ts, nullable=True),
+            pa.field("delta_pct_change", pa.float64(), nullable=True),
+            pa.field("delta_vol_ratio", pa.float64(), nullable=True),
+            pa.field("delta_consistency", pa.float64(), nullable=True),
+            pa.field("prev_exists", pa.bool_(), nullable=False),
+        ]
+    )
+    analysis_meta_type = pa.struct(
+        [
+            pa.field("pipeline_version", pa.string(), nullable=False),
+            pa.field("generated_by", pa.string(), nullable=False),
+            pa.field("computed_at", ts, nullable=False),
+        ]
+    )
 
-    return pa.schema([
-        pa.field('ticker', pa.string(), nullable=False),
-        pa.field('name', pa.string(), nullable=True),
-        pa.field('exchange', pa.string(), nullable=False),
-        pa.field('date', ts, nullable=False),
-        pa.field('last_price', pa.float64(), nullable=False),
-        pa.field('prev_close', pa.float64(), nullable=True),
-        pa.field('pct_change', pa.float64(), nullable=False),
-        pa.field('volume', pa.float64(), nullable=False),
-        pa.field('vol_ratio', pa.float64(), nullable=True),
-        pa.field('vol_z', pa.float64(), nullable=True),
-        pa.field('vol_spike_flag', pa.bool_(), nullable=False),
-        pa.field('new_in_market', pa.bool_(), nullable=False),
-        pa.field('sector', pa.string(), nullable=True),
-        pa.field('industry', pa.string(), nullable=True),
-        pa.field('country', pa.string(), nullable=True),
-        pa.field('exchange_return', pa.float64(), nullable=True),
-        pa.field('sector_return', pa.float64(), nullable=True),
-        pa.field('industry_return', pa.float64(), nullable=True),
-        pa.field('country_return', pa.float64(), nullable=True),
-        pa.field('robust_abs', pa.float64(), nullable=True),
-        pa.field('robust_rel_z', pa.float64(), nullable=True),
-        pa.field('is_robust_on_bad_day', pa.bool_(), nullable=False),
-        pa.field('standout_z', pa.float64(), nullable=True),
-        pa.field('standout_flag', pa.bool_(), nullable=False),
-        pa.field('consistency_score', pa.float64(), nullable=True),
-        pa.field('num_of_rising_days', pa.int64(), nullable=False),
-        pa.field('accumulated_change', pa.float64(), nullable=False),
-        pa.field('trend_label', pa.string(), nullable=True),
-        pa.field('market_cap', pa.float64(), nullable=True),
-        pa.field('pe_ratio', pa.float64(), nullable=True),
-        pa.field('comparison', comparison_type, nullable=False),
-        pa.field('confidence', pa.float64(), nullable=False),
-        pa.field('bootstrap_source', pa.string(), nullable=True),
-        pa.field('analysis_meta', analysis_meta_type, nullable=False),
-    ])
+    return pa.schema(
+        [
+            pa.field("ticker", pa.string(), nullable=False),
+            pa.field("name", pa.string(), nullable=True),
+            pa.field("exchange", pa.string(), nullable=False),
+            pa.field("date", ts, nullable=False),
+            pa.field("last_price", pa.float64(), nullable=False),
+            pa.field("prev_close", pa.float64(), nullable=True),
+            pa.field("pct_change", pa.float64(), nullable=False),
+            pa.field("volume", pa.float64(), nullable=False),
+            pa.field("vol_ratio", pa.float64(), nullable=True),
+            pa.field("vol_z", pa.float64(), nullable=True),
+            pa.field("vol_spike_flag", pa.bool_(), nullable=False),
+            pa.field("new_in_market", pa.bool_(), nullable=False),
+            pa.field("sector", pa.string(), nullable=True),
+            pa.field("industry", pa.string(), nullable=True),
+            pa.field("country", pa.string(), nullable=True),
+            pa.field("exchange_return", pa.float64(), nullable=True),
+            pa.field("sector_return", pa.float64(), nullable=True),
+            pa.field("industry_return", pa.float64(), nullable=True),
+            pa.field("country_return", pa.float64(), nullable=True),
+            pa.field("robust_abs", pa.float64(), nullable=True),
+            pa.field("robust_rel_z", pa.float64(), nullable=True),
+            pa.field("is_robust_on_bad_day", pa.bool_(), nullable=False),
+            pa.field("standout_z", pa.float64(), nullable=True),
+            pa.field("standout_flag", pa.bool_(), nullable=False),
+            pa.field("consistency_score", pa.float64(), nullable=True),
+            pa.field("num_of_rising_days", pa.int64(), nullable=False),
+            pa.field("accumulated_change", pa.float64(), nullable=False),
+            pa.field("trend_label", pa.string(), nullable=True),
+            pa.field("market_cap", pa.float64(), nullable=True),
+            pa.field("pe_ratio", pa.float64(), nullable=True),
+            pa.field("comparison", comparison_type, nullable=False),
+            pa.field("confidence", pa.float64(), nullable=False),
+            pa.field("bootstrap_source", pa.string(), nullable=True),
+            pa.field("analysis_meta", analysis_meta_type, nullable=False),
+        ]
+    )
 
 
 def _to_utc_datetime(value):
@@ -257,7 +266,7 @@ def _to_utc_datetime(value):
     ts = pd.Timestamp(value)
     if pd.isna(ts):
         return None
-    ts = ts.tz_localize('UTC') if ts.tzinfo is None else ts.tz_convert('UTC')
+    ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
     return ts.to_pydatetime()
 
 
@@ -266,12 +275,12 @@ def _normalize_datetimes(records: List[Dict]) -> None:
     never has to infer timestamp type/timezone from mixed naive/aware or
     all-null data."""
     for record in records:
-        record['date'] = _to_utc_datetime(record.get('date'))
-        record['comparison']['prev_date'] = _to_utc_datetime(
-            record['comparison'].get('prev_date')
+        record["date"] = _to_utc_datetime(record.get("date"))
+        record["comparison"]["prev_date"] = _to_utc_datetime(
+            record["comparison"].get("prev_date")
         )
-        record['analysis_meta']['computed_at'] = _to_utc_datetime(
-            record['analysis_meta'].get('computed_at')
+        record["analysis_meta"]["computed_at"] = _to_utc_datetime(
+            record["analysis_meta"].get("computed_at")
         )
 
 
@@ -282,7 +291,7 @@ def _write_parquet(records: List[Dict], path: str) -> None:
 
     _normalize_datetimes(records)
     table = pa.Table.from_pylist(records, schema=_build_schema())
-    pq.write_table(table, path, compression='snappy')
+    pq.write_table(table, path, compression="snappy")
 
 
 def _upload_to_gcs(local_path: str, bucket_name: str, object_name: str) -> None:
@@ -292,7 +301,7 @@ def _upload_to_gcs(local_path: str, bucket_name: str, object_name: str) -> None:
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(object_name)
-    blob.upload_from_filename(local_path, content_type='application/octet-stream')
+    blob.upload_from_filename(local_path, content_type="application/octet-stream")
 
 
 def _load_to_bigquery(gcs_uri: str, dataset_id: str, table_id: str) -> int:

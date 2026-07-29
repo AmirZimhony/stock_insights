@@ -1,0 +1,143 @@
+name: CI
+
+permissions:
+  contents: read
+  pull-requests: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Configure git credentials for private packages
+        run: git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          METRICS_ENABLED: "false"
+        run: pytest -v
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: [lint, test, secret-scan]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: amiroz/projects:stock_insights_pr_${{ github.event.number }}
+          secrets: |
+            gh_pat=${{ secrets.GH_PAT }}
+          build-args: |
+            BUILD_TIMESTAMP=${{ github.run_number }}
+            BUILD_ID=${{ github.run_id }}
+            GIT_HASH=${{ github.sha }}
+
+      - name: Log pushed image
+        run: |
+          echo "Pushed image: amiroz/projects:stock_insights_pr_${{ github.event.number }}"
+          echo "Digest: ${{ steps.build.outputs.digest }}"
+
+  # Retag the PR image as latest after merge (no rebuild).
+  promote-latest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [lint, test, secret-scan]
+    steps:
+      - name: Find merged PR number
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+            });
+            const merged = prs.data.find((p) => p.merged_at);
+            if (!merged) {
+              core.setFailed(`No merged PR found for commit ${context.sha}`);
+              return;
+            }
+            core.setOutput("number", merged.number);
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Retag PR image as latest
+        run: |
+          SRC="amiroz/projects:stock_insights_pr_${{ steps.pr.outputs.number }}"
+          DEST="amiroz/projects:stock_insights_latest"
+          echo "Promoting ${SRC} -> ${DEST}"
+          docker buildx imagetools create --tag "${DEST}" "${SRC}"
+          echo "Latest image: ${DEST}"
