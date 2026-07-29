@@ -72,9 +72,9 @@ def main():
     )
     pipeline_duration_ms = (time.time() - pipeline_start) * 1000
 
-    stocker_metrics.timing("stock_insights.pipeline_duration_ms", pipeline_duration_ms)
-    stocker_metrics.gauge("stock_insights.records_processed", result.get("count", 0))
-    stocker_metrics.gauge("stock_insights.records_errors", result.get("errors", 0))
+    stocker_metrics.timing("pipeline_duration_ms", pipeline_duration_ms)
+    stocker_metrics.gauge("records_processed", result.get("count", 0))
+    stocker_metrics.gauge("records_errors", result.get("errors", 0))
 
     # Log results
     if result["success"]:
@@ -85,7 +85,7 @@ def main():
             logging.warning(f"Errors: {result['errors']}")
         sys.exit(0)
     else:
-        stocker_metrics.incr("stock_insights.pipeline_failures")
+        stocker_metrics.incr("pipeline_failures")
         logging.error(f"Pipeline failed: {result.get('error', 'Unknown error')}")
         sys.exit(1)
 

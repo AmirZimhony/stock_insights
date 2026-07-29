@@ -60,10 +60,10 @@ def test_main_success_emits_metrics_and_exits_zero(monkeypatch, metrics_calls):
         main_module.main()
 
     assert exc_info.value.code == 0
-    assert ("stock_insights.records_processed", 42) in metrics_calls["gauge"]
-    assert ("stock_insights.records_errors", 0) in metrics_calls["gauge"]
+    assert ("records_processed", 42) in metrics_calls["gauge"]
+    assert ("records_errors", 0) in metrics_calls["gauge"]
     assert len(metrics_calls["timing"]) == 1
-    assert metrics_calls["timing"][0][0] == "stock_insights.pipeline_duration_ms"
+    assert metrics_calls["timing"][0][0] == "pipeline_duration_ms"
     assert metrics_calls["incr"] == []
 
 
@@ -82,4 +82,4 @@ def test_main_failure_emits_failure_counter_and_exits_one(monkeypatch, metrics_c
         main_module.main()
 
     assert exc_info.value.code == 1
-    assert metrics_calls["incr"] == ["stock_insights.pipeline_failures"]
+    assert metrics_calls["incr"] == ["pipeline_failures"]
