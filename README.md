@@ -154,10 +154,10 @@ User). The pipeline fails fast if the variable is unset or the file is missing.
 
 **Configuration:** four CLI args, all overridable via `config.json`:
 
-- `--output-bucket` (e.g. `stocker_data_staging`)
-- `--output-prefix` (e.g. `daily_stock_summaries`)
-- `--bq-dataset` (e.g. `stocker_staging`)
-- `--bq-table` (e.g. `daily_stock_summaries`)
+- `--output-bucket` (e.g. `stocker_data_dev`)
+- `--output-prefix` (e.g. `daily_stock_summaries_dev`)
+- `--bq-dataset` (e.g. `stocker_dev`)
+- `--bq-table` (e.g. `daily_stock_summaries_dev`)
 
 If any of the four is missing, the GCP step is skipped and only MongoDB is written.
 
@@ -175,10 +175,10 @@ the destination project is inferred from `GOOGLE_APPLICATION_CREDENTIALS`.
 ```bash
 python main.py --date 10-11-2025 --env dev
 # uses:
-#   OUTPUT_BUCKET=stocker_data_staging
-#   OUTPUT_PREFIX=daily_stock_summaries
-#   BQ_DATASET=stocker_staging
-#   BQ_TABLE=daily_stock_summaries
+#   OUTPUT_BUCKET=stocker_data_dev
+#   OUTPUT_PREFIX=daily_stock_summaries_dev
+#   BQ_DATASET=stocker_dev
+#   BQ_TABLE=daily_stock_summaries_dev
 ```
 
 Airflow/prod passes all four explicitly, matching the pattern used for
@@ -193,12 +193,12 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
 - **docker-build** — on PRs only: pushes `amiroz/projects:stock_insights_pr_<PR#>` for testing
 - **promote-latest** — on merge to `main`: retags that PR image to `amiroz/projects:stock_insights_latest` (no rebuild)
 
-Requires these repo secrets: `GH_PAT` (installs the private `stocker_metrics` package), `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`.
+Requires these repo secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`. The image build installs `stocker_metrics` from its public GitHub repo.
 
 ## Docker
 
 ```bash
-GH_PAT=<your_github_pat> ./docker-build.sh  # Builds and pushes to Docker Hub
+./docker-build.sh  # Builds and pushes to Docker Hub
 docker run --env-file .env amiroz/projects:stock_insights_latest --date 10-11-2025 --env prod
 ```
 

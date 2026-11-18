@@ -29,8 +29,8 @@ def test_parse_args_parses_valid_date_and_env(monkeypatch):
     assert prev_date is None
     assert env == "dev"
     # dev config.json values, unless overridden by CLI flags
-    assert db_name == "stock_staging"
-    assert source_collection == "stocks_merged_staging"
+    assert db_name == "stock_dev"
+    assert source_collection == "stocks_merged_dev"
     assert target_collection == "daily_stock_summaries_dev"
     assert thresholds["volume_spike_threshold"] == 2.0
 

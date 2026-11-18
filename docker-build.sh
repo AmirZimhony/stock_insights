@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# Requires GH_PAT (a GitHub PAT with read access to the private
-# stocker_metrics repo) to be exported in the environment - it is passed to
-# the build as a BuildKit secret (--secret id=gh_pat,env=GH_PAT), never as a
-# --build-arg, so it never lands in an image layer.
-
 # Configuration - Docker Hub registry
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-amiroz}"      # Your Docker Hub username
 PUSH_IMAGE="${PUSH_IMAGE:-true}"                   # Enable push by default
@@ -37,7 +32,6 @@ docker buildx build \
     --build-arg BUILD_TIMESTAMP="${TIMESTAMP}" \
     --build-arg BUILD_ID="${BUILD_ID}" \
     --build-arg GIT_HASH="${GIT_HASH}" \
-    --secret id=gh_pat,env=GH_PAT \
     --no-cache \
     -t "${UNIQUE_TAG}" \
     -t "${LATEST_TAG}" \
