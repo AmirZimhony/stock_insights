@@ -84,7 +84,7 @@ def write_to_gcp(
             pass
 
     stage_start = time.time()
-    bq_rows = _load_to_bigquery(gcs_uri, bq_dataset, bq_table)
+    bq_rows = _load_to_bigquery(gcs_uri, bq_dataset, bq_table, target_date)
     logging.info(f"BigQuery load: {time.time() - stage_start:.2f}s")
 
     errors = len(df) - len(records)
@@ -304,17 +304,63 @@ def _upload_to_gcs(local_path: str, bucket_name: str, object_name: str) -> None:
     blob.upload_from_filename(local_path, content_type="application/octet-stream")
 
 
-def _load_to_bigquery(gcs_uri: str, dataset_id: str, table_id: str) -> int:
-    """
-    Load the GCS Parquet file into BigQuery {project}.{dataset}.{table}
-    with WRITE_APPEND. Project is inferred from GOOGLE_APPLICATION_CREDENTIALS.
+def _delete_existing_date(client, table_ref: str, target_date: datetime) -> None:
+    """Remove this date's rows so the following append replaces them."""
+    from google.api_core.exceptions import NotFound
+    from google.cloud import bigquery
 
-    Returns the number of rows the load job reports as output.
+    try:
+        client.get_table(table_ref)
+    except NotFound:
+        logging.info(
+            "BigQuery table %s does not exist yet; skipping delete before first load",
+            table_ref,
+        )
+        return
+
+    day = target_date.date()
+    query = f"DELETE FROM `{table_ref}` WHERE DATE(date, 'UTC') = @target_date"
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("target_date", "DATE", day)]
+    )
+    logging.info("Deleting existing BigQuery rows table=%s date=%s", table_ref, day)
+    try:
+        job = client.query(query, job_config=job_config)
+        job.result()
+    except Exception as exc:
+        logging.error(
+            "BigQuery delete failed table=%s date=%s: %s: %s",
+            table_ref,
+            day,
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        raise
+    if job.errors:
+        raise RuntimeError(f"BigQuery delete failed: {job.errors}")
+    logging.info(
+        "Deleted BigQuery rows table=%s date=%s affected=%s",
+        table_ref,
+        day,
+        job.num_dml_affected_rows,
+    )
+
+
+def _load_to_bigquery(
+    gcs_uri: str, dataset_id: str, table_id: str, target_date: datetime
+) -> int:
+    """
+    Replace this date's rows, then load the Parquet file with WRITE_APPEND.
+
+    The table is not partitioned, so the whole table is not truncated.
+    Project is inferred from GOOGLE_APPLICATION_CREDENTIALS.
     """
     from google.cloud import bigquery
 
     client = bigquery.Client()
     table_ref = f"{client.project}.{dataset_id}.{table_id}"
+    _delete_existing_date(client, table_ref, target_date)
 
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,

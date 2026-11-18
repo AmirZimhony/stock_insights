@@ -32,10 +32,10 @@ def test_parse_fields_parses_percentages_volume_and_market_cap():
     assert result.loc[0, "date"].tzinfo is not None
 
 
-def test_parse_fields_handles_unparseable_change_as_zero():
+def test_parse_fields_leaves_unparseable_change_missing():
     df = pd.DataFrame([{"change": "-"}])
     result = _parse_fields(df)
-    assert result.loc[0, "pct_change"] == 0.0
+    assert pd.isna(result.loc[0, "pct_change"])
 
 
 def test_derive_fields_computes_prev_close_and_composite_keys():

@@ -124,11 +124,11 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df["date"] = df["date"].dt.tz_convert("UTC")
 
-    # Parse change from percentage string (e.g., "-0.22%") and store as pct_change
-    # Unparseable values (e.g., "-") are treated as 0 to keep the record instead of dropping it
+    # Parse change from percentage string (e.g., "-0.22%") and store as pct_change.
+    # Unparseable values (e.g., "-") stay missing so they do not enter averages.
     if "change" in df.columns:
         df["pct_change"] = df["change"].astype(str).str.rstrip("%")
-        df["pct_change"] = pd.to_numeric(df["pct_change"], errors="coerce").fillna(0.0)
+        df["pct_change"] = pd.to_numeric(df["pct_change"], errors="coerce")
 
     # Parse volume from comma-separated string (e.g., "98,935")
     if "volume" in df.columns:

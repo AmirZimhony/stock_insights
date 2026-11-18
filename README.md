@@ -167,8 +167,7 @@ If any of the four is missing, the GCP step is skipped and only MongoDB is writt
 gs://<output_bucket>/<output_prefix>/date=YYYY-MM-DD/daily_summaries.parquet
 ```
 
-**BigQuery load:** Parquet load job with `WRITE_APPEND` and `autodetect=True`;
-the destination project is inferred from `GOOGLE_APPLICATION_CREDENTIALS`.
+**BigQuery load:** when the table already exists, delete that date's rows, then load the Parquet file with `WRITE_APPEND` and `autodetect=True`. A rerun replaces the date instead of appending a second copy. The destination project is inferred from `GOOGLE_APPLICATION_CREDENTIALS`.
 
 **Testing defaults** (already in `config.json` `dev`):
 

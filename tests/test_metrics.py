@@ -91,6 +91,31 @@ def test_standout_flag_and_direction_on_latest_day():
     assert bbb["standout_flag"]
 
 
+def test_missing_change_does_not_move_exchange_mean():
+    date = datetime(2025, 11, 10, tzinfo=timezone.utc)
+    rows = []
+    for ticker, pct_change in (("AAA", 10.0), ("BBB", 0.0), ("CCC", float("nan"))):
+        rows.append(
+            {
+                "ticker": ticker,
+                "date": date,
+                "volume": 100.0,
+                "pct_change": pct_change,
+                "exchange": "NASDAQ",
+                "exchange_sector": "NASDAQ|Tech",
+                "exchange_industry": "NASDAQ|Software",
+                "exchange_country": "NASDAQ|USA",
+                "num_of_rising_days": 1,
+            }
+        )
+
+    df = calculate_metrics(pd.DataFrame(rows), THRESHOLDS)
+    latest = df[df["ticker"] != "CCC"]
+
+    assert latest["exchange_return"].eq(5.0).all()
+    assert pd.isna(df.loc[df["ticker"] == "CCC", "pct_change"]).all()
+
+
 def test_confidence_is_full_when_enough_data_points_and_no_bootstrap():
     df = calculate_metrics(_make_df(), THRESHOLDS)
     # Each ticker has 3 data points and min_data_points is 2, no bootstrap fallback
