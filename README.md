@@ -64,8 +64,8 @@ python main.py \
 
 ### Volume Metrics
 - **volume** (float): Trading volume for the day
-- **vol_ratio** (float, optional): Current volume divided by 10-day rolling median volume. Values > 2.0 indicate volume spikes
-- **vol_z** (float, optional): Z-score of log(volume) - measures how unusual the volume is statistically
+- **vol_ratio** (float, optional): Current volume divided by the median of the previous 10 days (today excluded). Values > 2.0 indicate volume spikes
+- **vol_z** (float, optional): Z-score of log(volume) against the other days in the lookback. Measures how unusual the volume is statistically
 - **vol_spike_flag** (boolean): True if vol_ratio exceeds threshold (default 2.0)
 - **new_in_market** (boolean): True if this ticker appears for the first time in the lookback window
 
@@ -94,7 +94,7 @@ Measures how well a stock performs relative to its market context:
 Measures how much a stock stands out from its sector peers:
 - **standout_z** (float, optional): Z-score of pct_change vs sector peers. Values > 1.5 indicate significant outperformance/underperformance
 - **standout_flag** (boolean): True if |standout_z| exceeds threshold (default 1.5)
-- **bootstrap_source** (string, optional): Indicates if sector had <5 stocks, so exchange-wide comparison was used instead. Values: "exchange_median" or null. null means there are more than 5 stocks in this sector. 
+- **bootstrap_source** (string, optional): Indicates if sector had <5 stocks, so the exchange mean and standard deviation were used instead. Values: "exchange_mean" or null. null means there are more than 5 stocks in this sector. 
 
 ### Consistency Metrics
 Measures price movement consistency over the lookback period:
@@ -128,10 +128,10 @@ Nested object with pipeline information:
 ## Logic
 
 **Metrics Calculation:**
-- Volume ratios use 10-day rolling median. Z-scores computed on log(volume).
+- Volume ratios use the median of the previous 10 days, excluding today. Z-scores of log(volume) leave out the day being scored.
 - Exchange/sector/industry/country returns are average pct_change per group (only latest date).
 - Robustness: `robust_abs = pct_change - exchange_return`. `is_robust_on_bad_day` flags stocks that outperform when exchange is down.
-- Standout: Z-score of pct_change vs sector. Falls back to exchange-wide if sector has <5 stocks (bootstrap).
+- Standout: Z-score of pct_change vs sector. Falls back to the exchange mean and standard deviation if sector has <5 stocks (bootstrap).
 - Consistency: `1/(1 + std(pct_change_10d))`. Trend label from `num_of_rising_days` (>=3 = "up", <=-2 = "down", else "sideways").
 
 **Comparisons:**
@@ -140,7 +140,7 @@ Nested object with pipeline information:
 - Calculates deltas: `delta_pct_change`, `delta_vol_ratio`, `delta_consistency`.
 
 **Bootstrapping:**
-- When sector/industry groups have <5 stocks, use exchange-wide medians.
+- When sector/industry groups have <5 stocks, use the exchange mean and standard deviation.
 - Sets `bootstrap_source` and reduces confidence by 20%.
 
 ## GCP Output (GCS + BigQuery)

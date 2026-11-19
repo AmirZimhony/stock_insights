@@ -4,7 +4,7 @@ from datetime import timezone
 
 import pytest
 
-from src.utils import parse_args
+from src.utils import get_mongo_client, parse_args
 
 
 def test_parse_args_parses_valid_date_and_env(monkeypatch):
@@ -84,3 +84,27 @@ def test_parse_args_cli_overrides_take_precedence_over_config(monkeypatch):
     assert db_name == "custom_db"
     assert source_collection == "custom_source"
     assert target_collection == "custom_target"
+
+
+def test_get_mongo_client_requires_db_url(monkeypatch):
+    monkeypatch.delenv("db_url", raising=False)
+    with pytest.raises(ValueError, match="db_url environment variable is required"):
+        get_mongo_client()
+
+    monkeypatch.setenv("db_url", "")
+    with pytest.raises(ValueError, match="db_url environment variable is required"):
+        get_mongo_client()
+
+
+def test_get_mongo_client_passes_db_url_to_mongo_client(monkeypatch):
+    monkeypatch.setenv("db_url", "mongodb://example:27017/stocks")
+    created = {}
+
+    def fake_client(uri):
+        created["uri"] = uri
+        return "client"
+
+    monkeypatch.setattr("src.utils.MongoClient", fake_client)
+
+    assert get_mongo_client() == "client"
+    assert created["uri"] == "mongodb://example:27017/stocks"

@@ -199,10 +199,11 @@ def _derive_fields(df: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
 
-    # Fill missing sector/industry/country with 'Unknown'
-    df["sector"] = df["sector"].fillna("Unknown")
-    df["industry"] = df["industry"].fillna("Unknown")
-    df["country"] = df["country"].fillna("Unknown")
+    # The scraper stores "-" for a missing category. Treat that, blanks, and
+    # nulls as missing before building the composite keys.
+    for column in ("sector", "industry", "country"):
+        missing = df[column].isna() | df[column].isin(("", "-"))
+        df[column] = df[column].mask(missing, "Unknown")
 
     # exchange_sector = exchange + "|" + sector
     df["exchange_sector"] = df["exchange"] + "|" + df["sector"]
