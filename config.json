@@ -1,13 +1,13 @@
 {
   "dev": {
-    "db_name": "stock_staging",
-    "source_collection": "stocks_merged_staging",
+    "db_name": "stock_dev",
+    "source_collection": "stocks_merged_dev",
     "target_collection": "daily_stock_summaries_dev",
     "gcp": {
-      "output_bucket": "stocker_data_staging",
-      "output_prefix": "daily_stock_summaries_staging",
-      "bq_dataset": "stocker_staging",
-      "bq_table": "daily_stock_summaries_staging"
+      "output_bucket": "stocker_data_dev",
+      "output_prefix": "daily_stock_summaries_dev",
+      "bq_dataset": "stocker_dev",
+      "bq_table": "daily_stock_summaries_dev"
     }
   },
   "thresholds": {

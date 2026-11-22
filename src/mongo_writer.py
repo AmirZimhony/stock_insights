@@ -7,7 +7,8 @@ import time
 from datetime import datetime
 from typing import Dict, List
 import pandas as pd
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, ReplaceOne
+from pymongo.errors import BulkWriteError
 from config import PIPELINE_VERSION, PIPELINE_NAME
 from src.models import DailySummary, ComparisonData, AnalysisMeta
 from src.utils import get_mongo_client
@@ -79,12 +80,39 @@ def upsert_summaries(
     return result
 
 
+SUMMARY_KEY_INDEX = "ticker_1_exchange_1_date_-1"
+
+
+def _ensure_unique_summary_index(collection, existing_indexes):
+    """One document per ticker, exchange, and date. Raise if that cannot be guaranteed."""
+    keys = [("ticker", ASCENDING), ("exchange", ASCENDING), ("date", DESCENDING)]
+    current = existing_indexes.get(SUMMARY_KEY_INDEX)
+    if current and current.get("unique"):
+        return
+    try:
+        if current:
+            logging.info(
+                "Replacing non-unique index %s with a unique index", SUMMARY_KEY_INDEX
+            )
+            collection.drop_index(SUMMARY_KEY_INDEX)
+        collection.create_index(keys, name=SUMMARY_KEY_INDEX, unique=True)
+        logging.info("Created unique index: %s", SUMMARY_KEY_INDEX)
+    except Exception as exc:
+        logging.error(
+            "Failed to create unique index %s: %s: %s",
+            SUMMARY_KEY_INDEX,
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        raise
+
+
 def _create_indexes(collection):
     """Create required indexes if they don't exist"""
+    existing_indexes = collection.index_information()
+    _ensure_unique_summary_index(collection, existing_indexes)
     try:
-        # Check existing indexes
-        existing_indexes = collection.index_information()
-
         # Index 1: {exchange:1, exchange_sector:1, date:-1, ticker:1}
         if "exchange_1_exchange_sector_1_date_-1_ticker_1" not in existing_indexes:
             collection.create_index(
@@ -97,14 +125,6 @@ def _create_indexes(collection):
                 name="exchange_1_exchange_sector_1_date_-1_ticker_1",
             )
             logging.info("Created index: exchange_1_exchange_sector_1_date_-1_ticker_1")
-
-        # Index 2: {ticker:1, exchange:1, date:-1}
-        if "ticker_1_exchange_1_date_-1" not in existing_indexes:
-            collection.create_index(
-                [("ticker", ASCENDING), ("exchange", ASCENDING), ("date", DESCENDING)],
-                name="ticker_1_exchange_1_date_-1",
-            )
-            logging.info("Created index: ticker_1_exchange_1_date_-1")
 
         # Index 3: {exchange:1, date:-1}
         if "exchange_1_date_-1" not in existing_indexes:
@@ -218,57 +238,100 @@ def _prepare_documents(df: pd.DataFrame) -> List[Dict]:
     return documents
 
 
+def _summary_key(doc: Dict):
+    return doc.get("ticker"), doc.get("exchange"), doc.get("date")
+
+
+def _written_count(upserted, matched) -> int:
+    return (upserted or 0) + (matched or 0)
+
+
 def _upsert_documents(collection, documents: List[Dict]) -> Dict:
     """
-    Insert documents to MongoDB using bulk insert with batching
+    Replace one document per ticker, exchange, and date.
 
-    Args:
-        collection: MongoDB collection
-        documents: List of documents to insert
-
-    Returns:
-        Dictionary with operation results
+    A rerun or a retry overwrites that key instead of inserting another copy.
     """
     # TODO: Remove timing logs before pushing - for performance debugging only
     start_time = time.time()
     total_docs = len(documents)
     batch_size = 1500  # Use 1.5k batch size (safe between 1k-2k)
-    inserted_count = 0
+    upserted_count = 0
     error_count = 0
 
-    # Process documents in batches
     for i in range(0, total_docs, batch_size):
         batch = documents[i : i + batch_size]
         batch_num = (i // batch_size) + 1
         total_batches = (total_docs + batch_size - 1) // batch_size
+        operations = []
+        for doc in batch:
+            ticker, exchange, date = _summary_key(doc)
+            if ticker is None or exchange is None or date is None:
+                error_count += 1
+                logging.error(
+                    "Skipping summary missing ticker, exchange, or date: "
+                    "ticker=%s exchange=%s",
+                    ticker,
+                    exchange,
+                )
+                continue
+            operations.append(
+                ReplaceOne(
+                    {"ticker": ticker, "exchange": exchange, "date": date},
+                    doc,
+                    upsert=True,
+                )
+            )
+        if not operations:
+            continue
 
         try:
-            # Use insert_many for bulk insert (much faster than individual inserts)
-            result = collection.insert_many(batch, ordered=False)
-            batch_inserted = len(result.inserted_ids)
-            inserted_count += batch_inserted
+            result = collection.bulk_write(operations, ordered=False)
+            written = _written_count(result.upserted_count, result.matched_count)
+            upserted_count += written
             logging.info(
-                f"Batch {batch_num}/{total_batches}: Inserted {batch_inserted}/{len(batch)} documents"
+                f"Batch {batch_num}/{total_batches}: Upserted {written}/{len(operations)} documents"
             )
-        except Exception as e:
-            # If bulk insert fails, it might be due to duplicates
-            # Log the error but continue with next batch
+        except BulkWriteError as exc:
+            details = exc.details or {}
+            written = _written_count(details.get("nUpserted"), details.get("nMatched"))
+            failed = len(details.get("writeErrors") or []) or (
+                len(operations) - written
+            )
+            upserted_count += written
+            error_count += failed
             logging.error(
-                f"Error in bulk insert batch {batch_num}/{total_batches}: {e}"
+                "bulk_write batch %s/%s failed: %s: %s; written=%s failed=%s",
+                batch_num,
+                total_batches,
+                type(exc).__name__,
+                exc,
+                written,
+                failed,
+                exc_info=True,
             )
-            error_count += len(batch)
+        except Exception as exc:
+            error_count += len(operations)
+            logging.error(
+                "bulk_write batch %s/%s failed: %s: %s",
+                batch_num,
+                total_batches,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
 
     total_time = time.time() - start_time
     avg_time_per_doc = total_time / total_docs if total_docs > 0 else 0
     logging.info(
-        f"Document insert complete: {inserted_count} inserted, {error_count} errors in {total_time:.2f}s ({total_time / 60:.2f} minutes)"
+        f"Document upsert complete: {upserted_count} upserted, {error_count} errors in {total_time:.2f}s ({total_time / 60:.2f} minutes)"
     )
     logging.info(
         f"Average time per document: {avg_time_per_doc * 1000:.1f}ms - Rate: {total_docs / total_time:.0f} docs/s"
     )
 
     return {
-        "upserted": inserted_count,  # Keep same return format for compatibility
+        "upserted": upserted_count,
         "errors": error_count,
         "total": len(documents),
     }

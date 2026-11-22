@@ -124,11 +124,11 @@ def _parse_fields(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df["date"] = df["date"].dt.tz_convert("UTC")
 
-    # Parse change from percentage string (e.g., "-0.22%") and store as pct_change
-    # Unparseable values (e.g., "-") are treated as 0 to keep the record instead of dropping it
+    # Parse change from percentage string (e.g., "-0.22%") and store as pct_change.
+    # Unparseable values (e.g., "-") stay missing so they do not enter averages.
     if "change" in df.columns:
         df["pct_change"] = df["change"].astype(str).str.rstrip("%")
-        df["pct_change"] = pd.to_numeric(df["pct_change"], errors="coerce").fillna(0.0)
+        df["pct_change"] = pd.to_numeric(df["pct_change"], errors="coerce")
 
     # Parse volume from comma-separated string (e.g., "98,935")
     if "volume" in df.columns:
@@ -199,10 +199,11 @@ def _derive_fields(df: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
 
-    # Fill missing sector/industry/country with 'Unknown'
-    df["sector"] = df["sector"].fillna("Unknown")
-    df["industry"] = df["industry"].fillna("Unknown")
-    df["country"] = df["country"].fillna("Unknown")
+    # The scraper stores "-" for a missing category. Treat that, blanks, and
+    # nulls as missing before building the composite keys.
+    for column in ("sector", "industry", "country"):
+        missing = df[column].isna() | df[column].isin(("", "-"))
+        df[column] = df[column].mask(missing, "Unknown")
 
     # exchange_sector = exchange + "|" + sector
     df["exchange_sector"] = df["exchange"] + "|" + df["sector"]

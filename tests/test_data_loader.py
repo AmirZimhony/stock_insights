@@ -32,10 +32,10 @@ def test_parse_fields_parses_percentages_volume_and_market_cap():
     assert result.loc[0, "date"].tzinfo is not None
 
 
-def test_parse_fields_handles_unparseable_change_as_zero():
+def test_parse_fields_leaves_unparseable_change_missing():
     df = pd.DataFrame([{"change": "-"}])
     result = _parse_fields(df)
-    assert result.loc[0, "pct_change"] == 0.0
+    assert pd.isna(result.loc[0, "pct_change"])
 
 
 def test_derive_fields_computes_prev_close_and_composite_keys():
@@ -56,6 +56,30 @@ def test_derive_fields_computes_prev_close_and_composite_keys():
 
     assert result.loc[0, "prev_close"] == pytest.approx(100.0)
     assert result.loc[0, "sector"] == "Unknown"
+    assert result.loc[0, "exchange_sector"] == "NASDAQ|Unknown"
+    assert result.loc[0, "exchange_industry"] == "NASDAQ|Unknown"
+    assert result.loc[0, "exchange_country"] == "NASDAQ|Unknown"
+
+
+def test_derive_fields_treats_dash_and_blank_as_missing():
+    df = pd.DataFrame(
+        [
+            {
+                "last_price": 100.0,
+                "pct_change": 0.0,
+                "sector": "-",
+                "industry": "",
+                "country": "-",
+                "exchange": "NASDAQ",
+            }
+        ]
+    )
+
+    result = _derive_fields(df)
+
+    assert result.loc[0, "sector"] == "Unknown"
+    assert result.loc[0, "industry"] == "Unknown"
+    assert result.loc[0, "country"] == "Unknown"
     assert result.loc[0, "exchange_sector"] == "NASDAQ|Unknown"
     assert result.loc[0, "exchange_industry"] == "NASDAQ|Unknown"
     assert result.loc[0, "exchange_country"] == "NASDAQ|Unknown"

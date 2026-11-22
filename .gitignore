@@ -29,3 +29,6 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local writeup of a production bug. Do not publish.
+REFACTORING_SUMMARY.md

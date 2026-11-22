@@ -12,7 +12,9 @@ from config import load_config
 
 def get_mongo_client():
     """Get MongoDB client from environment"""
-    mongo_uri = os.getenv("db_url", "mongodb://localhost:27017/")
+    mongo_uri = os.getenv("db_url")
+    if not mongo_uri:
+        raise ValueError("db_url environment variable is required")
     return MongoClient(mongo_uri)
 
 

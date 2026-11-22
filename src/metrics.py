@@ -17,6 +17,46 @@ def _get_latest_date_df(df: pd.DataFrame) -> Tuple:
     return latest_date, latest_df
 
 
+def _leave_one_out_z(values: np.ndarray) -> np.ndarray:
+    """Population z-score of each value against the other values.
+
+    A series with fewer than two other values has no distribution to score
+    against, so those entries stay missing.
+    """
+    values = np.asarray(values, dtype=float)
+    z = np.full(len(values), np.nan)
+    if len(values) <= 2 or np.isnan(values).any():
+        return z
+
+    others_count = len(values) - 1
+    total = values.sum()
+    sumsq = np.square(values).sum()
+    others_mean = (total - values) / others_count
+    others_var = (sumsq - np.square(values)) / others_count - np.square(others_mean)
+    others_std = np.sqrt(np.clip(others_var, 0, None))
+    delta = values - others_mean
+    np.divide(delta, others_std, out=z, where=others_std > 0)
+    z[(others_std == 0) & (np.abs(delta) <= 1e-12)] = 0.0
+    return z
+
+
+def _stamp_latest(df: pd.DataFrame, latest_df: pd.DataFrame, column: str, fill):
+    """Write a latest-day column back by the original row index."""
+    row_ids = latest_df["_row"].to_numpy()
+    if fill is None:
+        values = [
+            None if pd.isna(value) else value for value in latest_df[column].tolist()
+        ]
+        stamped = pd.Series([None] * len(df), index=df.index, dtype=object)
+        stamped.loc[row_ids] = values
+        df[column] = stamped
+        return df
+
+    df[column] = fill
+    df.loc[row_ids, column] = latest_df[column].to_numpy()
+    return df
+
+
 def calculate_metrics(df: pd.DataFrame, thresholds: Dict) -> pd.DataFrame:
     """
     Calculate all metrics for stock data
@@ -74,19 +114,16 @@ def _calculate_volume_metrics(df: pd.DataFrame, spike_threshold: float) -> pd.Da
     def calc_vol_metrics(group):
         # Re-attach grouping column (pandas >=3.0 excludes it from the group)
         group = group.assign(ticker=group.name)
-        # Rolling median volume (10 days)
+        # Median of the previous 10 days. Today is not part of its own baseline.
         group = group.sort_values("date")
-        group["vol_median"] = group["volume"].rolling(window=10, min_periods=1).median()
-
-        # vol_ratio = volume / rolling_median
+        prior_volume = group["volume"].shift(1)
+        group["vol_median"] = prior_volume.rolling(window=10, min_periods=1).median()
         group["vol_ratio"] = group["volume"] / group["vol_median"]
 
-        # vol_z = z-score of log(volume)
-        log_vol = np.log(group["volume"] + 1)  # +1 to avoid log(0)
-        if len(log_vol) > 1:
-            group["vol_z"] = stats.zscore(log_vol, nan_policy="omit")
-        else:
-            group["vol_z"] = 0.0
+        # vol_z = z-score of log(volume) against the other days in the lookback
+        group["vol_z"] = _leave_one_out_z(
+            np.log(group["volume"].to_numpy(dtype=float) + 1)
+        )
 
         return group
 
@@ -154,7 +191,8 @@ def _calculate_robustness_metrics(df: pd.DataFrame) -> pd.DataFrame:
     # robust_abs = pct_change - exchange_return
     df["robust_abs"] = df["pct_change"] - df["exchange_return"]
 
-    latest_date, latest_df = _get_latest_date_df(df)
+    _, latest_df = _get_latest_date_df(df)
+    latest_df["_row"] = latest_df.index
 
     def calc_robust_z(group):
         # Re-attach grouping column (pandas >=3.0 excludes it from the group)
@@ -168,15 +206,7 @@ def _calculate_robustness_metrics(df: pd.DataFrame) -> pd.DataFrame:
     latest_df = latest_df.groupby("exchange_sector", group_keys=False).apply(
         calc_robust_z
     )
-
-    # Map back to full dataframe (only for latest date)
-    robust_z_map = latest_df.set_index("ticker")["robust_rel_z"].to_dict()
-    df["robust_rel_z"] = df.apply(
-        lambda row: (
-            robust_z_map.get(row["ticker"], 0.0) if row["date"] == latest_date else 0.0
-        ),
-        axis=1,
-    )
+    _stamp_latest(df, latest_df, "robust_rel_z", 0.0)
 
     # is_robust_on_bad_day
     df["is_robust_on_bad_day"] = (df["exchange_return"] < 0) & (
@@ -192,9 +222,14 @@ def _calculate_standout_metrics(
     """Calculate standout metrics"""
 
     latest_date, latest_df = _get_latest_date_df(df)
+    # Kept beside the grouped frame so the exchange fallback still sees every row,
+    # and so each row can be written back by its original index.
+    latest_rows = latest_df.copy()
+    latest_rows["_row"] = latest_rows.index
+    exchange_frame = latest_rows
 
     # Log sector group sizes for debugging
-    sector_counts = latest_df.groupby("exchange_sector").size()
+    sector_counts = latest_rows.groupby("exchange_sector").size()
     logging.info(
         f"Standout metrics: Analyzing {len(sector_counts)} exchange_sector groups on {latest_date}"
     )
@@ -228,10 +263,10 @@ def _calculate_standout_metrics(
         else:
             # Fallback to exchange-wide comparison
             exchange = group["exchange"].iloc[0]
-            exchange_df = latest_df[latest_df["exchange"] == exchange]
+            exchange_df = exchange_frame[exchange_frame["exchange"] == exchange]
             if len(exchange_df) > 1:
                 exchange_mean = exchange_df["pct_change"].mean()
-                exchange_std = exchange_df["pct_change"].std()
+                exchange_std = exchange_df["pct_change"].std(ddof=0)
                 if exchange_std > 0:
                     group["standout_z"] = (
                         group["pct_change"] - exchange_mean
@@ -240,50 +275,30 @@ def _calculate_standout_metrics(
                     group["standout_z"] = 0.0
             else:
                 group["standout_z"] = 0.0
-            group["bootstrap_source"] = "exchange_median"
+            group["bootstrap_source"] = "exchange_mean"
             logging.info(
                 f"Bootstrap used for exchange_sector '{group['exchange_sector'].iloc[0]}' ({len(group)} stocks < {min_points})"
             )
 
         return group
 
-    latest_df = latest_df.groupby("exchange_sector", group_keys=False).apply(
+    latest_rows = latest_rows.groupby("exchange_sector", group_keys=False).apply(
         calc_standout_z
     )
 
-    # Map back to full dataframe
-    standout_map = latest_df.set_index("ticker")["standout_z"].to_dict()
-    bootstrap_map = latest_df.set_index("ticker")["bootstrap_source"].to_dict()
-
-    # Log bootstrap usage statistics
-    bootstrap_usage = {k: v for k, v in bootstrap_map.items() if v is not None}
-    if bootstrap_usage:
-        bootstrap_tickers = list(bootstrap_usage.keys())
-        bootstrap_sectors = set(
-            latest_df[latest_df["ticker"].isin(bootstrap_tickers)]["exchange_sector"]
-        )
+    bootstrapped = latest_rows[latest_rows["bootstrap_source"].notna()]
+    if len(bootstrapped):
         logging.info(
-            f"Bootstrap applied to {len(bootstrap_usage)} tickers from {len(bootstrap_sectors)} sectors"
+            f"Bootstrap applied to {len(bootstrapped)} tickers from "
+            f"{bootstrapped['exchange_sector'].nunique()} sectors"
         )
     else:
         logging.info(
-            f"No bootstrap needed: all {len(bootstrap_map)} tickers have sufficient sector data"
+            f"No bootstrap needed: all {len(latest_rows)} tickers have sufficient sector data"
         )
 
-    df["standout_z"] = df.apply(
-        lambda row: (
-            standout_map.get(row["ticker"], 0.0) if row["date"] == latest_date else 0.0
-        ),
-        axis=1,
-    )
-    df["bootstrap_source"] = df.apply(
-        lambda row: (
-            bootstrap_map.get(row["ticker"], None)
-            if row["date"] == latest_date
-            else None
-        ),
-        axis=1,
-    )
+    _stamp_latest(df, latest_rows, "standout_z", 0.0)
+    _stamp_latest(df, latest_rows, "bootstrap_source", None)
 
     # standout_flag
     df["standout_flag"] = df["standout_z"].abs() > z_threshold
@@ -302,12 +317,9 @@ def _calculate_consistency_metrics(
         group = group.assign(ticker=group.name)
         group = group.sort_values("date")
 
-        # consistency_score = 1 / (1 + std(pct_change over 10 days))
-        if len(group) > 1:
-            std_pct_change = group["pct_change"].std()
-            group["consistency_score"] = 1.0 / (1.0 + std_pct_change)
-        else:
-            group["consistency_score"] = 1.0
+        # consistency_score = 1 / (1 + std of the trailing 10 observations)
+        std_pct_change = group["pct_change"].rolling(window=10, min_periods=2).std()
+        group["consistency_score"] = (1.0 / (1.0 + std_pct_change)).fillna(1.0)
 
         return group
 

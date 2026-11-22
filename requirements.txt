@@ -1,24 +1,23 @@
 # Core dependencies
-pandas>=2.0.0
-numpy>=1.24.0
-scipy>=1.10.0
+pandas==3.0.2
+numpy==2.4.4
+scipy==1.17.1
 
 # MongoDB
-pymongo>=4.5.0
-dnspython>=2.4.0
+pymongo==4.16.0
+dnspython==2.8.0
 
 # GCP (GCS + BigQuery)
-google-cloud-storage>=2.14.0
-google-cloud-bigquery>=3.17.0
-pyarrow>=15.0.0
+google-cloud-storage==3.17.1
+google-cloud-bigquery==3.47.0
+pyarrow==26.0.1
 
 # Data validation
-pydantic>=2.0.0
+pydantic==2.13.2
 
 # Metrics
-git+https://github.com/AmirZimhony/stocker_metrics.git
+git+https://github.com/AmirZimhony/stocker_metrics.git@ab6eb5f5463a1a0bbacf718484771169cb62f739
 
 # Testing (optional)
-pytest>=7.4.0
-pytest-cov>=4.1.0
-
+pytest==9.0.3
+pytest-cov==7.1.0

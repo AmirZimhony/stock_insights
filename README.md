@@ -64,8 +64,8 @@ python main.py \
 
 ### Volume Metrics
 - **volume** (float): Trading volume for the day
-- **vol_ratio** (float, optional): Current volume divided by 10-day rolling median volume. Values > 2.0 indicate volume spikes
-- **vol_z** (float, optional): Z-score of log(volume) - measures how unusual the volume is statistically
+- **vol_ratio** (float, optional): Current volume divided by the median of the previous 10 days (today excluded). Values > 2.0 indicate volume spikes
+- **vol_z** (float, optional): Z-score of log(volume) against the other days in the lookback. Measures how unusual the volume is statistically
 - **vol_spike_flag** (boolean): True if vol_ratio exceeds threshold (default 2.0)
 - **new_in_market** (boolean): True if this ticker appears for the first time in the lookback window
 
@@ -94,7 +94,7 @@ Measures how well a stock performs relative to its market context:
 Measures how much a stock stands out from its sector peers:
 - **standout_z** (float, optional): Z-score of pct_change vs sector peers. Values > 1.5 indicate significant outperformance/underperformance
 - **standout_flag** (boolean): True if |standout_z| exceeds threshold (default 1.5)
-- **bootstrap_source** (string, optional): Indicates if sector had <5 stocks, so exchange-wide comparison was used instead. Values: "exchange_median" or null. null means there are more than 5 stocks in this sector. 
+- **bootstrap_source** (string, optional): Indicates if sector had <5 stocks, so the exchange mean and standard deviation were used instead. Values: "exchange_mean" or null. null means there are more than 5 stocks in this sector. 
 
 ### Consistency Metrics
 Measures price movement consistency over the lookback period:
@@ -128,10 +128,10 @@ Nested object with pipeline information:
 ## Logic
 
 **Metrics Calculation:**
-- Volume ratios use 10-day rolling median. Z-scores computed on log(volume).
+- Volume ratios use the median of the previous 10 days, excluding today. Z-scores of log(volume) leave out the day being scored.
 - Exchange/sector/industry/country returns are average pct_change per group (only latest date).
 - Robustness: `robust_abs = pct_change - exchange_return`. `is_robust_on_bad_day` flags stocks that outperform when exchange is down.
-- Standout: Z-score of pct_change vs sector. Falls back to exchange-wide if sector has <5 stocks (bootstrap).
+- Standout: Z-score of pct_change vs sector. Falls back to the exchange mean and standard deviation if sector has <5 stocks (bootstrap).
 - Consistency: `1/(1 + std(pct_change_10d))`. Trend label from `num_of_rising_days` (>=3 = "up", <=-2 = "down", else "sideways").
 
 **Comparisons:**
@@ -140,7 +140,7 @@ Nested object with pipeline information:
 - Calculates deltas: `delta_pct_change`, `delta_vol_ratio`, `delta_consistency`.
 
 **Bootstrapping:**
-- When sector/industry groups have <5 stocks, use exchange-wide medians.
+- When sector/industry groups have <5 stocks, use the exchange mean and standard deviation.
 - Sets `bootstrap_source` and reduces confidence by 20%.
 
 ## GCP Output (GCS + BigQuery)
@@ -154,10 +154,10 @@ User). The pipeline fails fast if the variable is unset or the file is missing.
 
 **Configuration:** four CLI args, all overridable via `config.json`:
 
-- `--output-bucket` (e.g. `stocker_data_staging`)
-- `--output-prefix` (e.g. `daily_stock_summaries`)
-- `--bq-dataset` (e.g. `stocker_staging`)
-- `--bq-table` (e.g. `daily_stock_summaries`)
+- `--output-bucket` (e.g. `stocker_data_dev`)
+- `--output-prefix` (e.g. `daily_stock_summaries_dev`)
+- `--bq-dataset` (e.g. `stocker_dev`)
+- `--bq-table` (e.g. `daily_stock_summaries_dev`)
 
 If any of the four is missing, the GCP step is skipped and only MongoDB is written.
 
@@ -167,18 +167,17 @@ If any of the four is missing, the GCP step is skipped and only MongoDB is writt
 gs://<output_bucket>/<output_prefix>/date=YYYY-MM-DD/daily_summaries.parquet
 ```
 
-**BigQuery load:** Parquet load job with `WRITE_APPEND` and `autodetect=True`;
-the destination project is inferred from `GOOGLE_APPLICATION_CREDENTIALS`.
+**BigQuery load:** when the table already exists, delete that date's rows, then load the Parquet file with `WRITE_APPEND` and `autodetect=True`. A rerun replaces the date instead of appending a second copy. The destination project is inferred from `GOOGLE_APPLICATION_CREDENTIALS`.
 
 **Testing defaults** (already in `config.json` `dev`):
 
 ```bash
 python main.py --date 10-11-2025 --env dev
 # uses:
-#   OUTPUT_BUCKET=stocker_data_staging
-#   OUTPUT_PREFIX=daily_stock_summaries
-#   BQ_DATASET=stocker_staging
-#   BQ_TABLE=daily_stock_summaries
+#   OUTPUT_BUCKET=stocker_data_dev
+#   OUTPUT_PREFIX=daily_stock_summaries_dev
+#   BQ_DATASET=stocker_dev
+#   BQ_TABLE=daily_stock_summaries_dev
 ```
 
 Airflow/prod passes all four explicitly, matching the pattern used for
@@ -193,12 +192,12 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
 - **docker-build** — on PRs only: pushes `amiroz/projects:stock_insights_pr_<PR#>` for testing
 - **promote-latest** — on merge to `main`: retags that PR image to `amiroz/projects:stock_insights_latest` (no rebuild)
 
-Requires these repo secrets: `GH_PAT` (installs the private `stocker_metrics` package), `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`.
+Requires these repo secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`. The image build installs `stocker_metrics` from its public GitHub repo.
 
 ## Docker
 
 ```bash
-GH_PAT=<your_github_pat> ./docker-build.sh  # Builds and pushes to Docker Hub
+./docker-build.sh  # Builds and pushes to Docker Hub
 docker run --env-file .env amiroz/projects:stock_insights_latest --date 10-11-2025 --env prod
 ```
 
